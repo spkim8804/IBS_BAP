@@ -1,4 +1,4 @@
-# IBS Behavior Analysis Program (IBS-BAP) by Sunpil Kim
+# IBS Behavior Analysis Program (IBS-BAP)
 This program is under construction
 
 ## 기능
