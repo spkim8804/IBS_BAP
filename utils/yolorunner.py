@@ -1,4 +1,5 @@
 import cv2
+import torch
 import os
 import multiprocessing
 from ultralytics import YOLO
@@ -55,17 +56,15 @@ class YoloRunner(QThread):
             if not self.is_running: # Interrupted by stop button
                 self.progress.emit("[!] Yolo prediction stopped by user.")
                 self.stopped.emit()
-                self.cap.release()
                 return
             
-            ret, frame = self.cap.read()
-            if ret:
-                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                h, w, _ = frame.shape
-                
-                if not self.predicted_frame[current_frame]:
+            if not self.predicted_frame[current_frame]:
+                ret, frame = self.cap.read()
+                if ret:
+                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    h, w, _ = frame.shape
+                    
                     results = self.model(frame, verbose=False)
-                    self.predicted_frame[current_frame] = 1
                     self.progress.emit(f"Predict frame {current_frame}/{self.total_frames}...")
                     
                     # Draw bounding box and center
@@ -113,6 +112,8 @@ class YoloRunner(QThread):
                                     raw_coordinates[i*27 + 1 + self.rearrange[cls]*3] = center_y
                                     raw_coordinates[i*27 + 2 + self.rearrange[cls]*3] = conf
                                     check_cls[i][self.rearrange[cls]] += 1
+                    
+                    self.predicted_frame[current_frame] = 1
 
         self.result.emit({
             "bounding_boxes": self.bounding_boxes,
