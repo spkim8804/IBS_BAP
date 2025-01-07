@@ -2,9 +2,12 @@
 This program is under construction
 
 ## Functions
-* Visualize mp4 file and make bounding boxes.
-* Run Yolo11 for pose estimation (You can use your own model weight).
-* Save all the images and bounding boxes (format: class_id, center_x, center_y, width, height).
+Visualize mp4 file and make bounding boxes.
+
+Run Yolo11 for pose estimation (You can use your own model weight).
+* Run by CPU in default, but if you install **CUDA** appropriately, you can utilize GPU as well.
+
+Save all the images and bounding boxes (format: class_id, center_x, center_y, width, height).
 
 ## Installation
 **Anaconda environment** is recommanded.
