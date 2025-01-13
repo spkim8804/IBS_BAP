@@ -8,7 +8,7 @@ def export_frame_image(frame_data):
 
 def get_frame_types(video_path):
     """ffprobe로 프레임 타입 가져오기"""
-    ffprobe_path = os.path.join(os.getcwd(), "utils\\ffprobe.exe")  # ffprobe.exe 경로
+    ffprobe_path = os.path.join(os.getcwd(), "ffprobe.exe")  # ffprobe.exe 경로
     if not os.path.exists(ffprobe_path):
         raise FileNotFoundError(f"ffprobe.exe not found in {os.getcwd()}")
     

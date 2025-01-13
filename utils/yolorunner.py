@@ -1,6 +1,6 @@
 import cv2
-import torch
 import os
+import torch
 
 from ultralytics import YOLO
 from PyQt5.QtCore import QTimer, Qt, QPoint, QThread, pyqtSignal
@@ -19,7 +19,7 @@ class YoloRunner(QThread):
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.video_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.video_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+        # self.fps = self.cap.get(cv2.CAP_PROP_FPS)
 
         self.is_running = True
         
@@ -50,7 +50,7 @@ class YoloRunner(QThread):
         ]
 
     def run(self):
-        for current_frame in range(self.total_frames + 1):
+        for current_frame in range(self.total_frames):
             if not self.is_running: # Interrupted by stop button
                 self.progress.emit("[!] Yolo prediction stopped by user.")
                 self.result.emit({
@@ -61,22 +61,18 @@ class YoloRunner(QThread):
                 return
     
             if not self.predicted_frame[current_frame]:
-                frame_n = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
-                if frame_n != current_frame:
-                    self.cap.set(cv2.CAP_PROP_POS_MSEC, (current_frame / self.fps) * 1000)
+                if current_frame != int(self.cap.get(cv2.CAP_PROP_POS_FRAMES)):
+                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame)
                 
                 ret, frame = self.cap.read()
-                if ret:
-                    frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    h, w, _ = frame.shape
-                    
+                if ret:                    
                     results = self.model(frame, verbose=False)
                     self.progress.emit(f"Predict frame {current_frame}/{self.total_frames}...")
-                    
+
                     # Draw bounding box and center
                     check_cls = [[0 for _ in range(10)] for _ in range(10)]
                     raw_coordinates = [0] * 135
-                    
+
                     for det in results[0].boxes:
                         # det: [x1, y1, x2, y2, conf, cls]
                         xy = det.xyxy.tolist()[0]
