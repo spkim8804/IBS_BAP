@@ -66,7 +66,7 @@ class YoloRunner(QThread):
                 
                 ret, frame = self.cap.read()
                 if ret:                    
-                    results = self.model(frame, verbose=False)
+                    results = self.model(frame, iou=0.5, verbose=False)
                     self.progress.emit(f"Predict frame {current_frame}/{self.total_frames}...")
 
                     # Draw bounding box and center
