@@ -32,3 +32,8 @@ Install libraries.
 ```bash
 pip install -r requirements.txt
 ```
+
+Run IBS-BAP.
+```bash
+python IBS_BAP.py
+```
