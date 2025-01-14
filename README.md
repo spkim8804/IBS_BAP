@@ -11,7 +11,7 @@ To check your cuda version, run powershell or other prompt and run this command:
 nvidia-smi
 ```
 You can see this kind of image:
-![nvidia-smi](readme/nvidiasmi.jpg)
+![nvidia-smi](config/images/nvidiasmi.jpg)
 
 
 Save all the images and bounding boxes (format: class_id, center_x, center_y, width, height).
