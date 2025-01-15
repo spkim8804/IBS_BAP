@@ -1,4 +1,7 @@
-# 2024-01-13 ver
+# 2024-01-14 ver
+# Index: File management, Video controller, Load configuration, Yolo class, Yolo running
+#        Update frame, Mouse control, Keyboard control, BBox management, 
+#        Task management, Main program
 import sys
 import cv2
 import numpy as np
@@ -16,23 +19,26 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QImage, QPixmap, QPainter
 from PyQt5.QtCore import QTimer, Qt, QPoint, QThread, pyqtSignal
 
-from utils import get_screen_resolution, CheckVideoFormat, ConvertVideoToIframe
-
+from utils import (
+    get_screen_resolution, CheckVideoFormat, ConvertVideoToIframe,
+    YoloRunner, YoloSaver, calc_min_distance
+)
+        
 class VideoPlayer(QMainWindow):
     def __init__(self):
         super().__init__()
 
         # Window size setting depending on the system resolution
+        # Default: HD resolution (1280 x 720)
+        self.video_player_width = 1280
+        self.video_player_height = 720
         os_name = platform.system()
+        print(f"Current OS: {os_name}")
         if os_name == "Windows":
             self.video_player_width, self.video_player_height = get_screen_resolution()
-        else:
-            # Default: HD resolution (1280 x 720)
-            self.video_player_width = 1280
-            self.video_player_height = 720
         
-        self.video_player_width = int(self.video_player_width * 70 / 100)
-        self.video_player_height = int(self.video_player_height * 70 / 100)
+        self.video_player_width = int(self.video_player_width * 60 / 100)
+        self.video_player_height = int(self.video_player_height * 60 / 100)
         
         self.setWindowTitle("IBS Behavior Analysis Program (BAP)")
         self.setGeometry(10, 40, int(self.video_player_width * 1.2), int(self.video_player_height * 1.2))
@@ -68,7 +74,7 @@ class VideoPlayer(QMainWindow):
         self.status_label = QLabel("IBS_BAP by Sunpil Kim", self)
         self.statusBar().addPermanentWidget(self.status_label)
         
-        # ======== UI 구성 ========
+        # ======== UI interface ========
         self.scroll_area = QScrollArea(self)
         self.scroll_area.setWidgetResizable(False)
         self.scroll_area.setFixedSize(self.video_player_width + 10, self.video_player_height + 10)
@@ -79,7 +85,7 @@ class VideoPlayer(QMainWindow):
         self.video_label.setStyleSheet("background-color: black;")
         self.scroll_area.setWidget(self.video_label)
 
-        # 재생 슬라이더
+        # playback slider
         self.playback_slider = QSlider(Qt.Horizontal)
         self.playback_slider.setRange(0, 100)
         self.playback_slider.setValue(0)
@@ -87,7 +93,7 @@ class VideoPlayer(QMainWindow):
         self.frame_label.setFixedWidth(120)
         self.frame_cache = {}
 
-        # 드롭다운 (Class 선택)
+        # Class selector (dropdown)
         self.class_selector = QComboBox()
         
         # 버튼
@@ -100,13 +106,13 @@ class VideoPlayer(QMainWindow):
         self.yolo_button = QPushButton("Run yolo11")
         self.stop_button = QPushButton("🛑 Stop Task")
 
-        # Bounding Box 리스트
+        # Bounding Box list
         self.bbox_list = QListWidget()
         
-        # 비디오 재생 목록
+        # Playlist
         self.playlist = QListWidget()
 
-        # 레이아웃 설정
+        # GUI layout
         controls_layout = QHBoxLayout()
         controls_layout.addWidget(self.play_button)
         controls_layout.addWidget(self.previous_frame_button)
@@ -160,15 +166,15 @@ class VideoPlayer(QMainWindow):
         self.is_drawing = False
         self.bounding_boxes = {}
 
-        # JSON 설정 불러오기
+        # JSON setting
         self.classes = []
         self.current_class_id = 0
         self.load_classes()
         
-        # ======== 키보드 이벤트 ========
+        # ======== Keyboard event ========
         self.setFocusPolicy(Qt.StrongFocus)
 
-        # 확대/축소 관련 변수
+        # Zoom in/out
         self.h_scroll = self.scroll_area.horizontalScrollBar().value()
         self.v_scroll = self.scroll_area.verticalScrollBar().value()
         self.zoom_scale = 1.0
@@ -177,7 +183,7 @@ class VideoPlayer(QMainWindow):
         ###### YOLO setting ############
         self.predicted_frame = []
 
-        # ======== 이벤트 핸들러 연결 ========
+        # ======== Event handler connect ========
         self.play_button.clicked.connect(self.play_button_click)
         self.previous_frame_button.clicked.connect(self.move_to_previous_frame)
         self.next_frame_button.clicked.connect(self.move_to_next_frame)
@@ -185,19 +191,16 @@ class VideoPlayer(QMainWindow):
         self.save_all_button.clicked.connect(lambda: self.save_files("all"))
         self.delete_box_button.clicked.connect(self.delete_selected_box)
         self.playlist.itemClicked.connect(self.play_selected_file)
+        self.bbox_list.itemClicked.connect(self.selected_bbox)
         self.playback_slider.sliderPressed.connect(self.slider_pressed)
         self.playback_slider.sliderReleased.connect(self.slider_released)
         self.class_selector.currentIndexChanged.connect(self.class_selected)
         self.yolo_button.clicked.connect(self.run_yolo)
         self.stop_button.clicked.connect(self.stop_save_task)
-
-    def on_library_loaded(self, message):
-        self.yolo_button.setText("Run yolo11")
-        self.yolo_button.setEnabled(True)
     
-    # ======== 동영상 열기 ========
+    ### File management start #######################
     def open_files(self):
-        files, _ = QFileDialog.getOpenFileNames(self, "Open Files", "", "Video Files (*.mp4 *.jpg *.png)")
+        files, _ = QFileDialog.getOpenFileNames(self, "Open Files", "", "Files (*.mp4 *.jpg *.png)")
         if files:
             self.filelist.extend(files)
             self.playlist.addItems(files)
@@ -261,7 +264,7 @@ class VideoPlayer(QMainWindow):
 
         # Initialization
         self.current_frame_n = 0
-        self.playback_slider.setRange(0, self.total_frames)
+        self.playback_slider.setRange(1, self.total_frames)
         self.predicted_frame = [0]*(self.total_frames + 1)
         self.update_frame_label()
         self.bounding_boxes = {}
@@ -272,8 +275,9 @@ class VideoPlayer(QMainWindow):
         self.zoom_scale = self.original_scale
         
         self.update_frame()
-
-    # ======== Video controller ============
+    ### File management end #######################
+    
+    ### Video controller start ####################
     def play_button_click(self):
         if self.cap:
             if self.is_playing == True:
@@ -292,8 +296,20 @@ class VideoPlayer(QMainWindow):
             self.is_playing = False
             self.play_button.setText("▶(Space)")
             self.video_timer.stop()
+    
+    # ======== video slider controller ========
+    def slider_pressed(self):
+        if self.cap:
+            self.pause_video()
 
-    # ======== JSON 클래스 로드 ========
+    def slider_released(self):
+        if self.cap:
+            self.current_frame_n = int(self.playback_slider.value())
+            print(self.current_frame_n)
+            self.refresh_frame()
+    ### Video controller end ####################
+    
+    ### Load configuration start ################
     def load_classes(self):
         try:
             with open("./config/AVATAR3D_config.json", "r") as f:
@@ -306,18 +322,21 @@ class VideoPlayer(QMainWindow):
                 self.class_colors = self.generate_class_colors(len(self.classes))
         except Exception as e:
             print(f"[Error] Failed to load classes: {e}")
+    ### Load configuration end ################
 
-    # ======== Class_id selection ========
+    ### Yolo class start ######################
     def class_selected(self, index):
         self.current_class_id = index
-        
+
     def generate_class_colors(self, num_classes):
         random.seed(42)  # 재현 가능한 색상 생성
         colors = []
         for _ in range(num_classes):
             colors.append((random.randint(0, 255), random.randint(0, 255), random.randint(0, 255)))
         return colors
+    ### Yolo class end ######################
 
+    ### Yolo running start #################
     def save_yolo_result(self, results):
         self.bounding_boxes = results["bounding_boxes"]
         self.predicted_frame = results["predicted_frame"]
@@ -327,9 +346,7 @@ class VideoPlayer(QMainWindow):
         self.refresh_frame()
         
     def run_yolo(self):
-        if self.cap:
-            self.statusBar().showMessage("Load YOLO model..")
-            from utils import YoloRunner
+        if self.cap:            
             if self.cap_yolo:
                 self.cap_yolo.release()
             
@@ -347,9 +364,10 @@ class VideoPlayer(QMainWindow):
             self.yolo_task.start()
         else:
             QMessageBox.warning(self, "QMessageBox", "Please load the video")
-
-    # ======== Update frame ========
-    def render_frame(self, frame):
+    ### Yolo running end #################
+    
+    ### Update frame start #####################
+    def render_frame(self, frame, selected = None):
         frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
         # Ongoing Bounding Box
@@ -358,7 +376,7 @@ class VideoPlayer(QMainWindow):
             start_y = int((self.start_point[1] + self.v_scroll) / self.zoom_scale)
             end_x = int((self.end_point[0] + self.h_scroll) / self.zoom_scale)
             end_y = int((self.end_point[1] + self.v_scroll) / self.zoom_scale)
-            cv2.rectangle(frame, (start_x, start_y), (end_x, end_y), (255, 0, 0), 3)
+            cv2.rectangle(frame, (start_x, start_y), (end_x, end_y), (255, 0, 0), 2)
 
         # Bounding Box in current frame
         if self.current_frame_n in self.bounding_boxes:
@@ -366,6 +384,11 @@ class VideoPlayer(QMainWindow):
                 class_id, x1, y1, x2, y2 = bbox
                 color = self.class_colors[class_id % len(self.class_colors)]
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+
+        # Highlight clicked Bbox
+        if selected != None:
+            class_id, x1, y1, x2, y2 = self.bounding_boxes[self.current_frame_n][selected]
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 3)
         
         q_image = QImage(frame.data, frame.shape[1], frame.shape[0], frame.strides[0], QImage.Format_RGB888)
         self.video_label.setPixmap(QPixmap.fromImage(q_image))
@@ -378,39 +401,43 @@ class VideoPlayer(QMainWindow):
         if self.cap:
             ret, frame = self.cap.read()
             if ret:
+                self.current_frame_n += 1
                 self.current_frame = frame
                 self.render_frame(self.current_frame)
-                # if len(self.frame_cache) > 50:
-                #     self.frame_cache.pop(next(iter(self.frame_cache)))
-                self.current_frame_n += 1
             else:
                 self.pause_video()
+    
+    def refresh_frame(self):
+        if self.cap:
+            self.current_frame_n = int(max(self.current_frame_n - 1, 0))
+            if(self.current_frame_n == 0):
+                self.cap.release()
+                self.cap = cv2.VideoCapture(self.current_videopath)
+            else:
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame_n)
+            
+            self.update_frame()
+    
+    def update_frame_label(self):
+        self.frame_label.setText(f"Frame: {self.current_frame_n}/{self.total_frames}")
+    ### Update frame end #####################
 
-    # ======== video slider controller ========
-    def slider_pressed(self):
+    ### Mouse control start #######################
+    def mousePressEvent(self, event):
+        print(event.button())
         if self.cap:
             self.pause_video()
-
-    def slider_released(self):
-        if self.cap:
-            self.current_frame_n = int(self.playback_slider.value())
-            print(self.current_frame_n)
-            self.refresh_frame()
-
-    # ======== Bounding Box 이벤트 ========
-    def mousePressEvent(self, event):
-        if self.cap:
             self.get_scroll_position()
-            if (event.button() == Qt.LeftButton and
-                0 <= event.x() - 10 <= self.video_player_width and
+            if (0 <= event.x() - 10 <= self.video_player_width and
                 0 <= event.y() - 10 - self.menuBar().height() <= self.video_player_height):
-                
-                self.pause_video()
-                self.start_point = (event.x() - 10, event.y() - 10 - self.menuBar().height())
-                self.is_drawing = True
-
+                    self.start_point = (event.x() - 10, event.y() - 10 - self.menuBar().height())
+                    if event.button() == Qt.LeftButton:    
+                        self.is_drawing = True
+                    elif event.button() == Qt.RightButton:
+                        self.bbox_click(self.start_point)
+            
     def mouseMoveEvent(self, event):
-        if self.cap and self.is_drawing:
+        if self.is_drawing:
             self.pause_video()
             self.end_point = (min(event.x() - 10, self.video_player_width),
                               min(event.y() - 10 - self.menuBar().height(), self.video_player_height))
@@ -446,64 +473,6 @@ class VideoPlayer(QMainWindow):
             self.start_point = None
             self.end_point = None
 
-    def on_canvas_right_click(self, event):
-        click_x, click_y = event.x, event.y
-        closest_rect = None
-        closest_distance = float("inf")
-        threshold = 10  # Distance threshold in pixels for proximity click
-    
-        # Find the closest rectangle by minimum edge distance
-        for rect in self.rectangles:
-            x1, y1, x2, y2 = self.canvas.coords(rect)
-    
-            # Calculate minimum distance to the edges
-            if x1 <= click_x <= x2:  # Within vertical bounds
-                dist_top = abs(click_y - y1)  # Top edge
-                dist_bottom = abs(click_y - y2)  # Bottom edge
-                min_vert_dist = min(dist_top, dist_bottom)
-            else:
-                min_vert_dist = float("inf")
-    
-            if y1 <= click_y <= y2:  # Within horizontal bounds
-                dist_left = abs(click_x - x1)  # Left edge
-                dist_right = abs(click_x - x2)  # Right edge
-                min_horiz_dist = min(dist_left, dist_right)
-            else:
-                min_horiz_dist = float("inf")
-    
-            # Compute the overall minimum distance to the rectangle
-            min_distance = min(min_vert_dist, min_horiz_dist)
-    
-            # If the click is outside the rectangle, calculate corner distances
-            if click_x < x1 or click_x > x2 or click_y < y1 or click_y > y2:
-                corner_distances = [
-                    ((click_x - x1) ** 2 + (click_y - y1) ** 2) ** 0.5,  # Top-left corner
-                    ((click_x - x2) ** 2 + (click_y - y1) ** 2) ** 0.5,  # Top-right corner
-                    ((click_x - x1) ** 2 + (click_y - y2) ** 2) ** 0.5,  # Bottom-left corner
-                    ((click_x - x2) ** 2 + (click_y - y2) ** 2) ** 0.5,  # Bottom-right corner
-                ]
-                min_distance = min(min_distance, *corner_distances)
-    
-            # Check if this rectangle is the closest one within the threshold
-            if min_distance < closest_distance and min_distance <= threshold:
-                closest_distance = min_distance
-                closest_rect = rect
-    
-        # If a rectangle is close enough, delete it
-        if closest_rect is not None:
-            box_index = self.rectangle_to_box_map.pop(closest_rect)
-            self.bounding_boxes.pop(box_index)
-            self.canvas.delete(closest_rect)
-            if box_index < len(self.texts):
-                self.canvas.delete(self.texts[box_index])
-                self.texts.pop(box_index)
-            self.rectangles.pop(box_index)
-    
-            # Update the rectangle-to-box mapping for remaining rectangles
-            self.rectangle_to_box_map = {
-                rect: idx for idx, rect in enumerate(self.rectangles)
-            }
-            
     # ======== 확대/축소 ========
     def wheelEvent(self, event):
         # Scale change only when Ctrl key is pressed
@@ -522,8 +491,40 @@ class VideoPlayer(QMainWindow):
     def get_scroll_position(self):
         self.h_scroll = self.scroll_area.horizontalScrollBar().value()
         self.v_scroll = self.scroll_area.verticalScrollBar().value()
-        
-    # ======== Bounding Box save or delete ========
+    ### Mouse control end #######################
+
+    ### Keyboard control start #######################
+    def keyPressEvent(self, event):
+        if event.modifiers() & Qt.ControlModifier:
+            # Ctrl 키와 함께 방향키 입력 시 프레임 이동
+            if event.key() == Qt.Key_Right and self.is_playing == False:
+                self.move_to_next_frame()
+            elif event.key() == Qt.Key_Left and self.is_playing == False:
+                self.move_to_previous_frame()
+        else:
+            if event.key() == Qt.Key_Space:
+                self.play_button_click()
+            elif 48 <= event.key() < 48 + len(self.classes):
+                self.current_class_id = event.key() - 48
+                self.class_selector.setCurrentIndex(self.current_class_id)
+            elif event.key() == Qt.Key_Delete:
+                self.delete_selected_box()
+            elif event.key() == 68: # d key
+                self.move_to_previous_frame()
+            elif event.key() == 70: # f key
+                self.move_to_next_frame()
+                
+    def move_to_previous_frame(self):
+        if self.cap:
+            self.current_frame_n -= 1
+            self.refresh_frame()
+    
+    def move_to_next_frame(self):
+        if self.cap and self.current_frame_n < self.total_frames:
+            self.update_frame()
+    ### Keyboard control end #######################
+    
+    #### BBox management start #####################
     def update_bbox_list(self):
         self.bbox_list.clear()
         if self.current_frame_n in self.bounding_boxes:
@@ -557,53 +558,17 @@ class VideoPlayer(QMainWindow):
             self.bounding_boxes[self.current_frame_n].pop(selected)
             self.bbox_list.takeItem(selected)
             self.render_frame(self.current_frame)
-            
-    def keyPressEvent(self, event):
-        if event.modifiers() & Qt.ControlModifier:
-            # Ctrl 키와 함께 방향키 입력 시 프레임 이동
-            if event.key() == Qt.Key_Right and self.is_playing == False:
-                self.move_to_next_frame()
-            elif event.key() == Qt.Key_Left and self.is_playing == False:
-                self.move_to_previous_frame()
-        else:
-            if event.key() == Qt.Key_Space:
-                self.play_button_click()
-            elif 48 <= event.key() < 48 + len(self.classes):
-                self.current_class_id = event.key() - 48
-                self.class_selector.setCurrentIndex(self.current_class_id)
-            elif event.key() == Qt.Key_Delete:
-                self.delete_selected_box()
-            elif event.key() == 68: # d key
-                self.move_to_previous_frame()
-            elif event.key() == 70: # f key
-                self.move_to_next_frame()
-
-    def move_to_next_frame(self):
-        if self.cap and self.current_frame_n < self.total_frames:
-            self.update_frame()
-
-    def move_to_previous_frame(self):
-        if self.cap:
-            self.current_frame_n -= 1
-            self.refresh_frame()
-            
-    def refresh_frame(self):
-        if self.cap:
-            self.current_frame_n = int(max(self.current_frame_n - 1, 0))
-            if(self.current_frame_n == 0):
-                self.cap.release()
-                self.cap = cv2.VideoCapture(self.current_videopath)
-            else:
-                self.cap.set(cv2.CAP_PROP_POS_FRAMES, self.current_frame_n)
-            
-            self.update_frame()
         
-    def update_frame_label(self):
-        self.frame_label.setText(f"Frame: {self.current_frame_n + 1}/{self.total_frames}")
-    
-    def reset_statusBar(self):
-        self.status_label.setText("IBS_BAP by Sunpil Kim")
+    def selected_bbox(self, item):
+        row = self.bbox_list.row(item)
+        # selected = item.text()
+        # selected = self.bbox_list.currentRow()
+        self.render_frame(self.current_frame, selected = row)
+        item.setSelected(True)
 
+    #### BBox management end #####################
+
+    ### Task management start #####################
     def stop_save_task(self):
         if hasattr(self, 'yolo_task') and self.yolo_task.isRunning():
             self.yolo_task.stop()
@@ -614,7 +579,38 @@ class VideoPlayer(QMainWindow):
 
     def handle_task_stopped(self):
         self.statusBar().showMessage("Task is stopped!")
-        
+    ### Task management end #####################
+
+    #### Not usable now ################
+    def bbox_click(self, xy):
+        click_x = int((xy[0] + self.h_scroll) / self.zoom_scale)
+        click_y = int((xy[1] + self.v_scroll) / self.zoom_scale)
+        selected = None
+        closest_distance = float("inf")
+        threshold = 10  # Distance threshold in pixels for proximity click
+            
+        # Find the closest bbx by minimum edge distance
+        idx = 0
+        for bbox in self.bounding_boxes[self.current_frame_n]:
+            _, x1, y1, x2, y2 = bbox
+            min_distance = calc_min_distance(click_x, click_y, x1, y1, x2, y2)
+    
+            # Check if this rectangle is the closest one within the threshold
+            if min_distance < closest_distance and min_distance <= threshold:
+                closest_distance = min_distance
+                selected = idx
+            idx += 1
+
+        print(f"event: x: {click_x}, y: {click_y}, idx:{selected}, frame: {self.current_frame_n}")
+        # If a rectangle is close enough, delete it
+        if selected is not None:
+            self.bounding_boxes[self.current_frame_n].pop(selected)
+            print(self.bounding_boxes[self.current_frame_n])
+            self.bbox_list.takeItem(selected)
+            self.render_frame(self.current_frame)
+    #### Not usable now ################
+
+### Main program start ###############
 if __name__ == "__main__":
     multiprocessing.set_start_method("spawn", force=True)
     
@@ -633,3 +629,4 @@ if __name__ == "__main__":
         app.quit()
         del app
         print("[Info] QApplication resources have been cleaned up.")
+### Main program end ###############

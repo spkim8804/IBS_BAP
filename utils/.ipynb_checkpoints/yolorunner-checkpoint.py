@@ -5,6 +5,8 @@ import torch
 from ultralytics import YOLO
 from PyQt5.QtCore import QTimer, Qt, QPoint, QThread, pyqtSignal
 
+from utils import get_AB_AC_angle
+
 class YoloRunner(QThread):
     progress = pyqtSignal(str)
     finished = pyqtSignal()
@@ -20,10 +22,11 @@ class YoloRunner(QThread):
         self.video_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.video_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         # self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+        self.output = []
 
         self.is_running = True
         
-        self.model = YOLO('./ultralytics/weights/20241216_m_yolov4_data.pt')
+        self.model = YOLO('./weights/20241216_m_yolov4_data.pt')
         self.color_code = {
             "red": (0, 0, 255),
             "orange": (0, 165, 255),
@@ -50,7 +53,7 @@ class YoloRunner(QThread):
         ]
 
     def run(self):
-        for current_frame in range(self.total_frames):
+        for current_frame in range(1, self.total_frames + 1):
             if not self.is_running: # Interrupted by stop button
                 self.progress.emit("[!] Yolo prediction stopped by user.")
                 self.result.emit({
@@ -59,14 +62,15 @@ class YoloRunner(QThread):
                 })
                 self.stopped.emit()
                 return
-    
+            
+            raw_coordinates = [0] * 135
             if not self.predicted_frame[current_frame]:
-                if current_frame != int(self.cap.get(cv2.CAP_PROP_POS_FRAMES)):
+                if current_frame != int(self.cap.get(cv2.CAP_PROP_POS_FRAMES)) + 1:
                     self.cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame)
                 
                 ret, frame = self.cap.read()
                 if ret:                    
-                    results = self.model(frame, iou=0.5, verbose=False)
+                    results = self.model(frame, iou=0.4, conf=0.3, verbose=False)
                     self.progress.emit(f"Predict frame {current_frame}/{self.total_frames}...")
 
                     # Draw bounding box and center
@@ -116,7 +120,51 @@ class YoloRunner(QThread):
                                     check_cls[i][self.rearrange[cls]] += 1
                     
                     self.predicted_frame[current_frame] = 1
+                
+            # If feature is not detected, bring a previous value
+            # if(current_frame > 1):
+            #     for i in range(135):
+            #         if(raw_coordinates[i] == 0):
+            #             raw_coordinates[i] = self.output[current_frame - 1][i]
+        
+            # Measure an angle of each limb from body-ass line (4, 5: forelimb / 6, 7: hindlimb / 2: body / 3: ass)
+        
+            # forelimb (54 is for bottom camera)
+            f1_angle = get_AB_AC_angle(raw_coordinates[54 + 3*3], raw_coordinates[54 + 3*3 +1],
+                                       raw_coordinates[54 + 2*3], raw_coordinates[54 + 2*3 +1],
+                                       raw_coordinates[54 + 4*3], raw_coordinates[54 + 4*3 +1])
+        
+            f2_angle = get_AB_AC_angle(raw_coordinates[54 + 3*3], raw_coordinates[54 + 3*3 +1],
+                                       raw_coordinates[54 + 2*3], raw_coordinates[54 + 2*3 +1],
+                                       raw_coordinates[54 + 5*3], raw_coordinates[54 + 5*3 +1])
+            
+            if(f1_angle < 180 and f2_angle > 180):        
+                temp = raw_coordinates[54 + 4*3 : 54 + 4*3 +2]
+                raw_coordinates[54 + 4*3: 54 + 4*3 +2] = raw_coordinates[54 +5*3 : 54 +5*3 +2]
+                raw_coordinates[54 + 5*3 : 54+ 5*3 +2] = temp
+            
+            # hindlimb
+            h1_angle = get_AB_AC_angle(raw_coordinates[54 + 3*3], raw_coordinates[54 + 3*3+1],
+                                       raw_coordinates[54 + 2*3], raw_coordinates[54 + 2*3+1],
+                                       raw_coordinates[54 + 6*3], raw_coordinates[54 + 6*3+1])
+        
+            h2_angle = get_AB_AC_angle(raw_coordinates[54 + 3*3], raw_coordinates[54 + 3*3+1],
+                                           raw_coordinates[54 + 2*3], raw_coordinates[54 + 2*3+1],
+                                           raw_coordinates[54 + 7*3], raw_coordinates[54 + 7*3+1])
+            
+            if(h1_angle < 180 and h2_angle > 180):
+                temp = raw_coordinates[54 + 6*3 : 54 + 6*3+2]
+                raw_coordinates[54 + 6*3 : 54 + 6*3+2] = raw_coordinates[54 +7*3 : 54 + 7*3+2]
+                raw_coordinates[54 + 7*3 : 54 + 7*3+2] = temp
+    
+            # Result accumulation
+            self.output.append(raw_coordinates)
 
+        # Save to txt file
+        with open('result.txt', 'w') as file:
+            for row in self.output:
+                file.write('\t'.join(map(str, row)) + '\n')
+        
         self.result.emit({
             "bounding_boxes": self.bounding_boxes,
             "predicted_frame": self.predicted_frame

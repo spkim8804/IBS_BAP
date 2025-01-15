@@ -1,3 +1,4 @@
+import sys
 import os
 import subprocess
 import re
@@ -60,45 +61,135 @@ class CheckVideoFormat(QThread):
         return frames
 
 class ConvertVideoToIframe(QThread):
+    progress_signal = pyqtSignal(int)
+    status_signal = pyqtSignal(str)
+    result = pyqtSignal(str)
+    
     def __init__(self, video_path):
         super().__init__()
         self.video_path = video_path
+        self.running = True
+
+    def get_total_duration(self, video_path):
+        ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe.exe")
+        command = [
+            ffprobe_path, "-v", "error", "-show_entries",
+            "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", video_path
+        ]
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0:
+            return float(result.stdout.strip())
+        else:
+            raise RuntimeError(f"Error getting duration: {result.stderr}")
 
     def get_bitrate(self, video_path):
         ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe.exe")
-        cmd = [
-            ffprobe_path, 
-            "-v", "error", 
-            "-select_streams", "v:0", 
-            "-show_entries", "stream=bit_rate", 
-            "-of", "csv=p=0", self.video_path,
+        command = [
+            ffprobe_path, "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=bit_rate", "-of", "default=noprint_wrappers=1:nokey=1", video_path
         ]
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        
-        # 결과값 정리
-        if result.returncode == 0:  # 성공적으로 실행된 경우
-            return result.stdout.strip()  # 결과값에서 공백 제거 후 반환
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if result.returncode == 0:
+            return int(result.stdout.strip())
         else:
-            return f"Error: {result.stderr}"  # 에러 메시지 반환
-        
+            raise RuntimeError(f"Error getting bitrate: {result.stderr}")
+ 
     def run(self):
+        print(self.video_path)
         directory, filename = os.path.split(self.video_path)
         filename, ext = os.path.splitext(filename)
         output_path = f"{directory}/{filename}_iframe{ext}"
         
         bitrate = self.get_bitrate(self.video_path)
-        print(f"Bitrate: {bitrate} bps")
         
+        try:
+            total_duration = self.get_total_duration(self.video_path)
+            bitrate = self.get_bitrate(self.video_path)
+
+            command = [
+                "ffmpeg", "-i", self.video_path,
+                "-g", "1",
+                "-c:v", "libx264", "-b:v", f"{bitrate}",
+                "-an", output_path, "-y"
+            ]
+
+            process = subprocess.Popen(command, stderr=subprocess.PIPE, text=True)
+
+            for line in iter(process.stderr.readline, ""):
+                if not self.running:
+                    process.terminate()
+                    self.status_signal.emit("Conversion stopped.")
+                    return
+
+                if "time=" in line:
+                    match = re.search(r"time=(\d+):(\d+):(\d+\.\d+)", line)
+                    if match:
+                        elapsed_time = (
+                            int(match.group(1)) * 3600 +
+                            int(match.group(2)) * 60 +
+                            float(match.group(3))
+                        )
+                        progress = (elapsed_time / total_duration) * 100
+                        self.progress_signal.emit(int(progress))
+
+            process.wait()
+
+            if process.returncode == 0:
+                self.status_signal.emit("Conversion completed successfully!")
+                self.result.emit(output_path)
+            else:
+                self.status_signal.emit("Error during conversion.")
+
+        except Exception as e:
+            self.status_signal.emit(f"Error: {e}")
+    
+    def stop(self):
+        self.running = False
+
+
+def check_video_format(video_path, time = 1):        
+    def extract_first_frames(video_path, time, output_path="video_format_check.mp4"):
         ffmpeg_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffmpeg.exe")
         cmd = [
             ffmpeg_path,
-            "-i", self.video_path,
-            "-g", "1", # I-frame encoding
-            "-c:v", "libx264",
-            "-b:v", bitrate,
+            "-ss", "0",
+            "-t", f"{time}",
+            "-i", video_path,
+            # "-c:v", "libx264",
+            "-c:v", "copy",
             "-an",
             output_path
         ]
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        return output_path
+    
+    def analyze_video(video_path):
+        ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe.exe")
+        cmd = [
+            ffprobe_path,
+            "-i", video_path,
+            "-show_frames",
+            "-show_entries", "frame=pict_type",
+            "-of", "csv"
+        ]
         
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        frames = [
+            line.split(",")[-1] for line in result.stdout.splitlines()
+            if line.startswith("frame") and line.split(",")[-1].strip() != ""
+        ]
+        return frames
+
+    output_video = extract_first_frames(video_path, time)
+    frame_types = analyze_video(output_video)
+
+    os.remove(output_video)
+    
+    if "P" in frame_types:
+        return "P"
+    elif "B" in frame_types:
+        return "B"
+    elif "I" in frame_types:
+        return "I"
+
     
