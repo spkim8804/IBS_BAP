@@ -40,7 +40,8 @@ class CheckVideoFormat(QThread):
             "-an",
             output_path
         ]
-        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                       text=True, creationflags=subprocess.CREATE_NO_WINDOW)
         return output_path
     
     def analyze_video(self, video_path):
@@ -53,7 +54,8 @@ class CheckVideoFormat(QThread):
             "-of", "csv"
         ]
         
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                                text=True, creationflags=subprocess.CREATE_NO_WINDOW)
         frames = [
             line.split(",")[-1] for line in result.stdout.splitlines()
             if line.startswith("frame") and line.split(",")[-1].strip() != ""
@@ -76,7 +78,8 @@ class ConvertVideoToIframe(QThread):
             ffprobe_path, "-v", "error", "-show_entries",
             "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", video_path
         ]
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, creationflags=subprocess.CREATE_NO_WINDOW)
         if result.returncode == 0:
             return float(result.stdout.strip())
         else:
@@ -88,7 +91,8 @@ class ConvertVideoToIframe(QThread):
             ffprobe_path, "-v", "error", "-select_streams", "v:0",
             "-show_entries", "stream=bit_rate", "-of", "default=noprint_wrappers=1:nokey=1", video_path
         ]
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, creationflags=subprocess.CREATE_NO_WINDOW)
         if result.returncode == 0:
             return int(result.stdout.strip())
         else:
@@ -113,7 +117,8 @@ class ConvertVideoToIframe(QThread):
                 "-an", output_path, "-y"
             ]
 
-            process = subprocess.Popen(command, stderr=subprocess.PIPE, text=True)
+            process = subprocess.Popen(command, stderr=subprocess.PIPE,
+                                       text=True, creationflags=subprocess.CREATE_NO_WINDOW)
 
             for line in iter(process.stderr.readline, ""):
                 if not self.running:
@@ -160,7 +165,8 @@ def check_video_format(video_path, time = 1):
             "-an",
             output_path
         ]
-        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                       text=True, creationflags=subprocess.CREATE_NO_WINDOW)
         return output_path
     
     def analyze_video(video_path):
@@ -173,7 +179,8 @@ def check_video_format(video_path, time = 1):
             "-of", "csv"
         ]
         
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, creationflags=subprocess.CREATE_NO_WINDOW)
         frames = [
             line.split(",")[-1] for line in result.stdout.splitlines()
             if line.startswith("frame") and line.split(",")[-1].strip() != ""

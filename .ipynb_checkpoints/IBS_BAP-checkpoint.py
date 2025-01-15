@@ -11,10 +11,6 @@ import os
 import multiprocessing
 import platform
 
-import re
-import threading
-import subprocess
-
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout,
     QWidget, QFileDialog, QSlider, QHBoxLayout, QListWidget, QListWidgetItem,
@@ -672,7 +668,6 @@ class VideoConverterWindow(QWidget):
         self.setWindowTitle("Video Converter")
         self.setGeometry(100, 100, 200, 100)
 
-        self.process = None  # To hold the subprocess reference
         self.input_file = input_file
         
         self.init_gui()
