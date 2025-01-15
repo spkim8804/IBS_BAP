@@ -1,7 +1,7 @@
-# 2024-01-14 ver
+# 2024-01-15 ver
 # Index: File management, Video controller, Load configuration, Yolo class, Yolo running
 #        Update frame, Mouse control, Keyboard control, BBox management, 
-#        Task management, Main program
+#        Task management, Video conversion, Main program
 import sys
 import cv2
 import numpy as np
@@ -11,22 +11,27 @@ import os
 import multiprocessing
 import platform
 
+import re
+import threading
+import subprocess
+
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout,
     QWidget, QFileDialog, QSlider, QHBoxLayout, QListWidget, QListWidgetItem,
-    QComboBox, QScrollArea, QMenuBar, QAction, QMessageBox, QDialog
+    QComboBox, QScrollArea, QMenuBar, QAction, QMessageBox, QDialog, QProgressBar
 )
 from PyQt5.QtGui import QImage, QPixmap, QPainter
 from PyQt5.QtCore import QTimer, Qt, QPoint, QThread, pyqtSignal
 
 from utils import (
-    get_screen_resolution, CheckVideoFormat, ConvertVideoToIframe,
+    get_screen_resolution, CheckVideoFormat, ConvertVideoToIframe, check_video_format,
     YoloRunner, YoloSaver, calc_min_distance
 )
         
-class VideoPlayer(QMainWindow):
+class IBS_BAP(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.converter_window = None
 
         # Window size setting depending on the system resolution
         # Default: HD resolution (1280 x 720)
@@ -91,7 +96,8 @@ class VideoPlayer(QMainWindow):
         self.playback_slider.setValue(0)
         self.frame_label = QLabel("Frame: 0 / 0")
         self.frame_label.setFixedWidth(120)
-        self.frame_cache = {}
+        self.class_label = QLabel("Class selection")
+        self.bbox_list_label = QLabel("Bounding boxes list")
 
         # Class selector (dropdown)
         self.class_selector = QComboBox()
@@ -117,7 +123,6 @@ class VideoPlayer(QMainWindow):
         controls_layout.addWidget(self.play_button)
         controls_layout.addWidget(self.previous_frame_button)
         controls_layout.addWidget(self.next_frame_button)
-        controls_layout.addWidget(self.class_selector)
         controls_layout.addWidget(self.frame_label)
         controls_layout.addWidget(self.playlist)
 
@@ -128,6 +133,9 @@ class VideoPlayer(QMainWindow):
         video_layout.addLayout(controls_layout)
 
         bbox_layout = QVBoxLayout()
+        bbox_layout.addWidget(self.class_label)
+        bbox_layout.addWidget(self.class_selector)
+        bbox_layout.addWidget(self.bbox_list_label)
         bbox_layout.addWidget(self.bbox_list)
         bbox_layout.addWidget(self.save_box_button)
         bbox_layout.addWidget(self.save_all_button)
@@ -205,15 +213,27 @@ class VideoPlayer(QMainWindow):
             self.filelist.extend(files)
             self.playlist.addItems(files)
 
-    def video_format_result(self, results):
-        v_type = results
-        print(f"This video is {v_type}-frame")
-        if v_type != "I":
-            print("Video conversion begins")
-            self.video_convert_task = ConvertVideoToIframe(video_path = self.current_videopath)
-            self.video_format_task.progress.connect(lambda msg: self.statusBar().showMessage(msg))
-            self.video_format_task.result.connect(self.video_format_result)
-            self.video_convert_task.start()
+    def load_bounding_boxes(self, bbox_path, video_width, video_height):
+        bounding_boxes = []
+        print(bbox_path)
+        if os.path.exists(bbox_path): # 파일이 존재하는지 확인
+            with open(bbox_path, "r") as f:
+                for line in f:
+                    try:
+                        class_id, x_center, y_center, width, height = map(float, line.split())
+                        class_id = int(class_id) # class_id 는 정수형으로 변환
+    
+                        # 원래 좌표로 변환
+                        x1 = int((x_center - width / 2) * video_width)
+                        y1 = int((y_center - height / 2) * video_height)
+                        x2 = int((x_center + width / 2) * video_width)
+                        y2 = int((y_center + height / 2) * video_height)
+    
+                        bounding_boxes.append((class_id, x1, y1, x2, y2))
+                    except ValueError:
+                        print(f"경고: 잘못된 형식의 라인 발견: {line.strip()}") # 잘못된 형식의 라인 처리
+        
+        return bounding_boxes
     
     def play_selected_file(self, item: QListWidgetItem):
         self.pause_video()
@@ -234,47 +254,72 @@ class VideoPlayer(QMainWindow):
                     self.cap_yolo.release()
 
         file_path = item.text()
-        self.current_filename, self.current_ext = os.path.splitext(file_path.split("/")[-1])
-        self.current_videopath = file_path
+        directory, filename = os.path.split(file_path)
+        filename, ext = os.path.splitext(filename)
+        file_removed = False
         
-        if self.current_ext in [".jpg", ".png"]: # Treat as one frame video
-            self.current_frame = cv2.imread(file_path)
-            height, width, _ = self.current_frame.shape
-            file_path = "./utils/temp.mp4"
+        if ext in [".jpg", ".png"]: # Treat as one frame video
+            temp_frame = cv2.imread(file_path)
+            height, width, _ = temp_frame.shape
+            temp_path = "./utils/temp.mp4"
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            temp_writer = cv2.VideoWriter(file_path, fourcc, 1, (width, height))
-            temp_writer.write(self.current_frame)
+            temp_writer = cv2.VideoWriter(temp_path, fourcc, 1, (width, height))
+            temp_writer.write(temp_frame)
             temp_writer.release()
+            self.bounding_boxes = {}
+            self.bounding_boxes[1] = self.load_bounding_boxes(f"{directory}/{filename}.txt", width, height)
+            print(self.bounding_boxes)
+            self.cap = cv2.VideoCapture(temp_path)
         else:
             # Check video format (if not I-frame, it should be re-encoded for proper use)
-            self.video_format_task = CheckVideoFormat(video_path = file_path, time = 0.5)
-            self.video_format_task.progress.connect(lambda msg: self.statusBar().showMessage(msg))
-            self.video_format_task.result.connect(self.video_format_result)
-            self.video_format_task.start()
-            
-        # Capture video and get various values
-        self.cap = cv2.VideoCapture(file_path)
-        if not self.cap:
-            print("Video is not loaded!")
-            
-        self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        self.video_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        self.video_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+            video_format = check_video_format(video_path = file_path, time = 0.2)
+            print(f"video_format: {video_format}")
+            if video_format != "I":
+                selected = self.playlist.currentRow()
+                self.filelist.pop(selected)
+                self.playlist.takeItem(selected)
+                file_removed = True
 
-        # Initialization
-        self.current_frame_n = 0
-        self.playback_slider.setRange(1, self.total_frames)
-        self.predicted_frame = [0]*(self.total_frames + 1)
-        self.update_frame_label()
-        self.bounding_boxes = {}
+                reply = QMessageBox.warning(self, "Warning", 
+                    "This video is not I-frame format. Do you want to encode this video with I-frame format?",
+                    QMessageBox.Yes | QMessageBox.No, 
+                    QMessageBox.No
+                )
+                if reply == QMessageBox.No:
+                    return
+                else:
+                    self.converter_window = VideoConverterWindow(file_path)
+                    self.converter_window.conversion_complete_signal.connect(self.on_conversion_complete)
+                    self.converter_window.show()
+            else:
+                self.bounding_boxes = {}
+                self.cap = cv2.VideoCapture(file_path)
+                if not self.cap:
+                    print("Video is not loaded!")
+                    return
 
-        # Zoom scale setting
-        self.original_scale = min(self.video_player_width / self.video_width,
-                                  self.video_player_height / self.video_height)
-        self.zoom_scale = self.original_scale
-        
-        self.update_frame()
+        if file_removed == False:            
+            self.current_filename = filename
+            self.current_ext = ext
+            self.current_videopath = file_path
+            
+            self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            self.video_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            self.video_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            self.fps = self.cap.get(cv2.CAP_PROP_FPS)
+    
+            # Initialization
+            self.current_frame_n = 0
+            self.playback_slider.setRange(1, self.total_frames)
+            self.predicted_frame = [0]*(self.total_frames + 1)
+            self.update_frame_label()
+    
+            # Zoom scale setting
+            self.original_scale = min(self.video_player_width / self.video_width,
+                                      self.video_player_height / self.video_height)
+            self.zoom_scale = self.original_scale
+            
+            self.update_frame()
     ### File management end #######################
     
     ### Video controller start ####################
@@ -305,7 +350,6 @@ class VideoPlayer(QMainWindow):
     def slider_released(self):
         if self.cap:
             self.current_frame_n = int(self.playback_slider.value())
-            print(self.current_frame_n)
             self.refresh_frame()
     ### Video controller end ####################
     
@@ -424,7 +468,6 @@ class VideoPlayer(QMainWindow):
 
     ### Mouse control start #######################
     def mousePressEvent(self, event):
-        print(event.button())
         if self.cap:
             self.pause_video()
             self.get_scroll_position()
@@ -434,7 +477,7 @@ class VideoPlayer(QMainWindow):
                     if event.button() == Qt.LeftButton:    
                         self.is_drawing = True
                     elif event.button() == Qt.RightButton:
-                        self.bbox_click(self.start_point)
+                        self.bbox_right_click_for_remove(self.start_point)
             
     def mouseMoveEvent(self, event):
         if self.is_drawing:
@@ -533,10 +576,10 @@ class VideoPlayer(QMainWindow):
                 self.bbox_list.addItem(
                     f"Class: {self.classes[class_id]} | ({x1}, {y1}) -> ({x2}, {y2})"
                 )
-
+    
     def save_files(self, mode):
         if self.cap:
-            from utils import YoloSaver
+        
             self.cap_save = cv2.VideoCapture(self.current_videopath)
             self.statusBar().showMessage("Saving..")
             self.save_task = YoloSaver(
@@ -566,23 +609,7 @@ class VideoPlayer(QMainWindow):
         self.render_frame(self.current_frame, selected = row)
         item.setSelected(True)
 
-    #### BBox management end #####################
-
-    ### Task management start #####################
-    def stop_save_task(self):
-        if hasattr(self, 'yolo_task') and self.yolo_task.isRunning():
-            self.yolo_task.stop()
-            self.cap_yolo.release()
-        if hasattr(self, 'save_task') and self.save_task.isRunning():
-            self.save_task.stop()
-            self.cap_save.release()
-
-    def handle_task_stopped(self):
-        self.statusBar().showMessage("Task is stopped!")
-    ### Task management end #####################
-
-    #### Not usable now ################
-    def bbox_click(self, xy):
+    def bbox_right_click_for_remove(self, xy):
         click_x = int((xy[0] + self.h_scroll) / self.zoom_scale)
         click_y = int((xy[1] + self.v_scroll) / self.zoom_scale)
         selected = None
@@ -601,25 +628,121 @@ class VideoPlayer(QMainWindow):
                 selected = idx
             idx += 1
 
-        print(f"event: x: {click_x}, y: {click_y}, idx:{selected}, frame: {self.current_frame_n}")
         # If a rectangle is close enough, delete it
         if selected is not None:
             self.bounding_boxes[self.current_frame_n].pop(selected)
-            print(self.bounding_boxes[self.current_frame_n])
             self.bbox_list.takeItem(selected)
             self.render_frame(self.current_frame)
-    #### Not usable now ################
+    #### BBox management end #####################
 
+    ### Task management start #####################
+    def stop_save_task(self):
+        if hasattr(self, 'yolo_task') and self.yolo_task.isRunning():
+            self.yolo_task.stop()
+            self.cap_yolo.release()
+        if hasattr(self, 'save_task') and self.save_task.isRunning():
+            self.save_task.stop()
+            self.cap_save.release()
+
+    def handle_task_stopped(self):
+        self.statusBar().showMessage("Task is stopped!")
+    ### Task management end #####################
+
+    ### Video conversion start #####################
+    def on_conversion_complete(self, video_path):
+        print(video_path)
+        self.filelist.append(video_path)
+        self.playlist.addItems([video_path])
+        self.statusBar().showMessage("Video conversion completed and added in the filelist")
+    ### Video conversion end #####################
+
+    def closeEvent(self, event):
+        if self.converter_window is not None:
+            self.converter_window.close()
+            event.accept()
+        else:
+            event.accept()
+
+            
+class VideoConverterWindow(QWidget):
+    conversion_complete_signal = pyqtSignal(str)
+    
+    def __init__(self, input_file):
+        super().__init__()
+        self.setWindowTitle("Video Converter")
+        self.setGeometry(100, 100, 200, 100)
+
+        self.process = None  # To hold the subprocess reference
+        self.input_file = input_file
+        
+        self.init_gui()
+
+    def init_gui(self):
+        layout = QVBoxLayout()
+
+        # Progress Bar
+        self.progress_label = QLabel("Progress: 0.00%")
+        self.progress_bar = QProgressBar()
+        layout.addWidget(self.progress_label)
+        layout.addWidget(self.progress_bar)
+
+        # Start and Stop Buttons
+        button_layout = QHBoxLayout()
+        self.start_button = QPushButton("Start Conversion")
+        self.start_button.clicked.connect(self.start_conversion)
+        button_layout.addWidget(self.start_button)
+
+        self.stop_button = QPushButton("Stop Conversion")
+        self.stop_button.clicked.connect(self.stop_conversion)
+        self.stop_button.setEnabled(False)
+        button_layout.addWidget(self.stop_button)
+
+        layout.addLayout(button_layout)
+
+        self.setLayout(layout)
+
+    def start_conversion(self):
+        self.worker = ConvertVideoToIframe(self.input_file)
+        self.worker.progress_signal.connect(self.update_progress)
+        self.worker.status_signal.connect(self.update_status)
+        self.worker.result.connect(self.on_conversion_finished)
+
+        self.start_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
+
+        self.worker.start()
+
+    def stop_conversion(self):
+        if self.worker:
+            self.worker.stop()
+            self.worker = None
+            self.close()
+
+    def update_progress(self, progress):
+        self.progress_bar.setValue(progress)
+        self.progress_label.setText(f"Progress: {progress:.2f}%")
+
+    def update_status(self, status):
+        self.progress_label.setText(status)
+
+    def on_conversion_finished(self, video_path):
+        self.progress_bar.setValue(100)
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        self.conversion_complete_signal.emit(video_path)
+        self.close()
+        
 ### Main program start ###############
 if __name__ == "__main__":
-    multiprocessing.set_start_method("spawn", force=True)
     
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv)
 
-    player = VideoPlayer()
+    player = IBS_BAP()
     player.show()
+    player.raise_()
+    player.activateWindow()
 
     try:
         app.exec_()
