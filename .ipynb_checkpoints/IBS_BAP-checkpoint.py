@@ -9,6 +9,7 @@ import json
 import random
 import os
 import platform
+import multiprocessing
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout,
@@ -725,7 +726,7 @@ class VideoConverterWindow(QWidget):
         
 ### Main program start ###############
 if __name__ == "__main__":
-    
+    multiprocessing.freeze_support()
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv)
