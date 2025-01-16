@@ -1,6 +1,8 @@
 import cv2
 import os
 import torch
+import multiprocessing
+import json
 
 from ultralytics import YOLO
 from PyQt5.QtCore import QTimer, Qt, QPoint, QThread, pyqtSignal
@@ -18,6 +20,7 @@ class YoloRunner(QThread):
         self.cap = cap_yolo
         self.predicted_frame = predicted_frame
         self.bounding_boxes = bounding_boxes
+        self.yolo11_model_path = None
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.video_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.video_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -25,8 +28,15 @@ class YoloRunner(QThread):
         self.output = []
 
         self.is_running = True
+
+        config_path = os.path.join(os.getcwd(), "config\\AVATAR3D_config.json")
         
-        self.model = YOLO('./weights/20241216_m_yolov4_data.pt')
+        with open(config_path, "r") as f:
+            config = json.load(f)
+            self.yolo11_model_path = config.get("yolo11_model_path")
+            
+        print(f"modelpath: {self.yolo11_model_path}")
+        self.model = YOLO(self.yolo11_model_path)
         self.color_code = {
             "red": (0, 0, 255),
             "orange": (0, 165, 255),
@@ -61,12 +71,12 @@ class YoloRunner(QThread):
                     "predicted_frame": self.predicted_frame
                 })
                 self.stopped.emit()
-                return
+                break
             
             raw_coordinates = [0] * 135
             if not self.predicted_frame[current_frame]:
                 if current_frame != int(self.cap.get(cv2.CAP_PROP_POS_FRAMES)) + 1:
-                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame)
+                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame - 1)
                 
                 ret, frame = self.cap.read()
                 if ret:                    
@@ -90,7 +100,7 @@ class YoloRunner(QThread):
                         x2 = max(int(xy[0]), int(xy[2]))
                         y1 = min(int(xy[1]), int(xy[3]))
                         y2 = max(int(xy[1]), int(xy[3]))
-                        temp_bbox = (cls, x1, y1, x2, y2)
+                        temp_bbox = [cls, x1, y1, x2, y2]
                 
                         if current_frame not in self.bounding_boxes:
                             self.bounding_boxes[current_frame] = []
@@ -160,21 +170,25 @@ class YoloRunner(QThread):
             # Result accumulation
             self.output.append(raw_coordinates)
 
-        # Save to txt file
-        with open('result.txt', 'w') as file:
-            for row in self.output:
-                file.write('\t'.join(map(str, row)) + '\n')
-        
-        self.result.emit({
-            "bounding_boxes": self.bounding_boxes,
-            "predicted_frame": self.predicted_frame
-        })
-        self.progress.emit("Pose estimation complete!")
-        self.cap.release()
+        if self.is_running:
+            # Save to txt file
+            with open('result.txt', 'w') as file:
+                for row in self.output:
+                    file.write('\t'.join(map(str, row)) + '\n')
+            
+            self.result.emit({
+                "bounding_boxes": self.bounding_boxes,
+                "predicted_frame": self.predicted_frame
+            })
+            self.progress.emit("Pose estimation complete!")
+            self.cap.release()
+            
         self.finished.emit()
 
     def stop(self):
-        """스레드 실행 중지"""
         self.is_running = False
         self.cap.release()
+        
+# if __name__ == "__main__":
+#     multiprocessing.freeze_support()
     

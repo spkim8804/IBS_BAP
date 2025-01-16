@@ -104,7 +104,7 @@ class IBS_BAP(QMainWindow):
         self.next_frame_button = QPushButton("> (f)")
         self.save_box_button = QPushButton("💾 Save current BBox")
         self.save_all_button = QPushButton("💾 Save All BBox")
-        self.delete_box_button = QPushButton("❌ Delete Selected Box")
+        # self.delete_box_button = QPushButton("❌ Delete Selected Box")
         self.yolo_button = QPushButton("Run yolo11")
         self.stop_button = QPushButton("🛑 Stop Task")
 
@@ -135,7 +135,7 @@ class IBS_BAP(QMainWindow):
         bbox_layout.addWidget(self.bbox_list)
         bbox_layout.addWidget(self.save_box_button)
         bbox_layout.addWidget(self.save_all_button)
-        bbox_layout.addWidget(self.delete_box_button)
+        # bbox_layout.addWidget(self.delete_box_button)
         bbox_layout.addWidget(self.yolo_button)
         bbox_layout.addWidget(self.stop_button)
         
@@ -158,6 +158,7 @@ class IBS_BAP(QMainWindow):
         self.current_frame_n = 0
         self.current_filename = None
         self.current_ext= None
+        self.current_directory = None
         self.current_videopath = None
         
         # ==== Timer setting ========
@@ -170,10 +171,13 @@ class IBS_BAP(QMainWindow):
         self.is_drawing = False
         self.bounding_boxes = {}
 
+        ###### YOLO setting ############
+        self.predicted_frame = []
+        
         # JSON setting
         self.classes = []
         self.current_class_id = 0
-        self.load_classes()
+        self.load_config()
         
         # ======== Keyboard event ========
         self.setFocusPolicy(Qt.StrongFocus)
@@ -184,16 +188,13 @@ class IBS_BAP(QMainWindow):
         self.zoom_scale = 1.0
         self.original_scale = 1.0
 
-        ###### YOLO setting ############
-        self.predicted_frame = []
-
         # ======== Event handler connect ========
         self.play_button.clicked.connect(self.play_button_click)
         self.previous_frame_button.clicked.connect(self.move_to_previous_frame)
         self.next_frame_button.clicked.connect(self.move_to_next_frame)
         self.save_box_button.clicked.connect(lambda: self.save_files("one"))
         self.save_all_button.clicked.connect(lambda: self.save_files("all"))
-        self.delete_box_button.clicked.connect(self.delete_selected_box)
+        # self.delete_box_button.clicked.connect(self.delete_selected_box)
         self.playlist.itemClicked.connect(self.play_selected_file)
         self.bbox_list.itemClicked.connect(self.selected_bbox)
         self.playback_slider.sliderPressed.connect(self.slider_pressed)
@@ -224,7 +225,7 @@ class IBS_BAP(QMainWindow):
                         x2 = int((x_center + width / 2) * video_width)
                         y2 = int((y_center + height / 2) * video_height)
     
-                        bounding_boxes.append((class_id, x1, y1, x2, y2))
+                        bounding_boxes.append([class_id, x1, y1, x2, y2])
                     except ValueError:
                         print(f"경고: 잘못된 형식의 라인 발견: {line.strip()}") # 잘못된 형식의 라인 처리
         
@@ -287,6 +288,13 @@ class IBS_BAP(QMainWindow):
                     self.converter_window.show()
             else:
                 self.bounding_boxes = {}
+                if os.path.exists(f"{directory}/{filename}.json"):
+                    print(f"json file exist!")
+                    with open(f"{directory}/{filename}.json", 'r') as f:
+                        bboxes_str_keys = json.load(f)
+                    # Convert keys back to integers and inner lists to tuples
+                    self.bounding_boxes = {int(key): [tuple(bbox) for bbox in value] for key, value in bboxes_str_keys.items()}
+                    
                 self.cap = cv2.VideoCapture(file_path)
                 if not self.cap:
                     print("Video is not loaded!")
@@ -295,6 +303,7 @@ class IBS_BAP(QMainWindow):
         if file_removed == False:            
             self.current_filename = filename
             self.current_ext = ext
+            self.current_directory = directory
             self.current_videopath = file_path
             
             self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -348,12 +357,12 @@ class IBS_BAP(QMainWindow):
     ### Video controller end ####################
     
     ### Load configuration start ################
-    def load_classes(self):
+    def load_config(self):
         try:
             with open("./config/AVATAR3D_config.json", "r") as f:
                 config = json.load(f)
                 self.classes = config.get("class", [])
-                self.class_selector.clear()  # 기존 항목 제거
+                self.class_selector.clear()  # Initialize
                 self.class_selector.addItems(self.classes)
 
                 # 클래스별 고유 색상 할당
@@ -401,7 +410,7 @@ class IBS_BAP(QMainWindow):
             self.yolo_task.stopped.connect(self.handle_task_stopped)
             self.yolo_task.start()
         else:
-            QMessageBox.warning(self, "QMessageBox", "Please load the video")
+            QMessageBox.warning(self, "QMessageBox", "Please load video file")
     ### Yolo running end #################
     
     ### Update frame start #####################
@@ -426,7 +435,7 @@ class IBS_BAP(QMainWindow):
         # Highlight clicked Bbox
         if selected != None:
             class_id, x1, y1, x2, y2 = self.bounding_boxes[self.current_frame_n][selected]
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 3)
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 5)
         
         q_image = QImage(frame.data, frame.shape[1], frame.shape[0], frame.strides[0], QImage.Format_RGB888)
         self.video_label.setPixmap(QPixmap.fromImage(q_image))
@@ -497,7 +506,7 @@ class IBS_BAP(QMainWindow):
             y2 = int((self.end_point[1] + self.v_scroll) / self.zoom_scale)
             x1y1 = (min(x1, x2), min(y1, y2))
             x2y2 = (max(x1, x2), max(y1, y2))
-            temp_bbox = (self.current_class_id, *x1y1, *x2y2)
+            temp_bbox = [self.current_class_id, *x1y1, *x2y2]
             
             if self.current_frame_n not in self.bounding_boxes:
                 self.bounding_boxes[self.current_frame_n] = []
@@ -572,8 +581,13 @@ class IBS_BAP(QMainWindow):
                 )
     
     def save_files(self, mode):
-        if self.cap:
+        if self.current_ext == ".mp4":
+            print(self.bounding_boxes)
+            save_path = f"{self.current_directory}/{self.current_filename}.json"
+            with open(save_path, 'w') as f:
+                json.dump(self.bounding_boxes, f, indent=4)
         
+        if self.cap:
             self.cap_save = cv2.VideoCapture(self.current_videopath)
             self.statusBar().showMessage("Saving..")
             self.save_task = YoloSaver(
@@ -598,10 +612,8 @@ class IBS_BAP(QMainWindow):
         
     def selected_bbox(self, item):
         row = self.bbox_list.row(item)
-        # selected = item.text()
-        # selected = self.bbox_list.currentRow()
         self.render_frame(self.current_frame, selected = row)
-        item.setSelected(True)
+        # item.setSelected(True)
 
     def bbox_right_click_for_remove(self, xy):
         click_x = int((xy[0] + self.h_scroll) / self.zoom_scale)
@@ -726,7 +738,8 @@ class VideoConverterWindow(QWidget):
         
 ### Main program start ###############
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
+    # multiprocessing.freeze_support()
+    
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv)

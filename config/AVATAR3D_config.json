@@ -57,6 +57,7 @@
             ]
         }
     },
+    "yolo11_model_path": "./weights/20241216_m_yolov4_data.pt",
     "keypoint":{
         "cnt": 9,
         "id": [

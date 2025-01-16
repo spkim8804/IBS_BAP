@@ -50,7 +50,7 @@ class YoloSaver(QThread):
                     if self.mode == "one":
                         cv2.imwrite(image_path, frame)
                         self.progress.emit(f"Saving {filename}_{self.current_frame_n:06d}.jpg")
-                    elif self.mode == "all":                    
+                    elif self.mode == "all":
                         self.image_list.append((frame, self.current_frame_n, image_path))
                     
             # bbox save
@@ -82,7 +82,7 @@ class YoloSaver(QThread):
                     self.progress.emit("[!] Saving process stopped by user.")
                     self.stopped.emit()
                     self.cap.release()
-                    return
+                    break
                 self.current_frame_n = current_frame
                 self.save_image_bboxes()
                 
@@ -92,9 +92,10 @@ class YoloSaver(QThread):
                         pool.map(export_frame_image, self.image_list)
                         
                     self.image_list = []
-
-        self.progress.emit("Saving bounding boxes & images complete!")
-        self.cap.release()
+        if self.is_running:
+            self.progress.emit("Saving bounding boxes & images complete!")
+            self.cap.release()
+            
         self.finished.emit()
 
     def stop(self):
