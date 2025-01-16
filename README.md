@@ -50,6 +50,7 @@ If you have annotation data (".txt" and ".json" for for image and mp4 file, resp
 You can see image or frame in the left panel.
 * If you **drag with mouse left click**, you can make bounding box to annotate with class indicated on the top right panel ("fore" in this example). You can change class by click scroll-down or number in the keyboard (0-9 maximum).
 * To remove the bounding box, you can simply **mouse right-click** nearby your target box.
+* Zoom In/Zoom out: Using mouse wheel to magnify image for accurate bounding box validation.
 ### Class selection
 * You can choose class for annotation. **Default is AVATAR3D configuration** (7 classes: fore, hind, nose, head, ass, tail, torso).
 * If you want to annotate other classes, you can edit "class" section in "./config/AVATAR3D_config.json".
