@@ -32,6 +32,7 @@ class CheckVideoFormat(QThread):
         ffmpeg_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffmpeg.exe")
         cmd = [
             ffmpeg_path,
+            # "ffmpeg",
             "-ss", "0",
             "-t", f"{time}",
             "-i", video_path,
@@ -48,6 +49,7 @@ class CheckVideoFormat(QThread):
         ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe.exe")
         cmd = [
             ffprobe_path,
+            # "ffprobe",
             "-i", video_path,
             "-show_frames",
             "-show_entries", "frame=pict_type",
@@ -75,7 +77,9 @@ class ConvertVideoToIframe(QThread):
     def get_total_duration(self, video_path):
         ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe.exe")
         command = [
-            ffprobe_path, "-v", "error", "-show_entries",
+            ffprobe_path,
+            # "ffprobe",
+            "-v", "error", "-show_entries",
             "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", video_path
         ]
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -88,7 +92,9 @@ class ConvertVideoToIframe(QThread):
     def get_bitrate(self, video_path):
         ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe.exe")
         command = [
-            ffprobe_path, "-v", "error", "-select_streams", "v:0",
+            ffprobe_path, 
+            # "ffprobe",
+            "-v", "error", "-select_streams", "v:0",
             "-show_entries", "stream=bit_rate", "-of", "default=noprint_wrappers=1:nokey=1", video_path
         ]
         result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -107,11 +113,14 @@ class ConvertVideoToIframe(QThread):
         bitrate = self.get_bitrate(self.video_path)
         
         try:
+            ffmpeg_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffmpeg.exe")
             total_duration = self.get_total_duration(self.video_path)
             bitrate = self.get_bitrate(self.video_path)
 
             command = [
-                "ffmpeg", "-i", self.video_path,
+                ffmpeg_path,
+                # "ffmpeg", 
+                "-i", self.video_path,
                 "-g", "1",
                 "-c:v", "libx264", "-b:v", f"{bitrate}",
                 "-an", output_path, "-y"
