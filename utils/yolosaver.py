@@ -103,5 +103,5 @@ class YoloSaver(QThread):
         self.cap.release()
 
 if __name__ == "__main__":
-    freeze_support()
+    multiprocessing.freeze_support()
         
