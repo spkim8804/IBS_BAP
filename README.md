@@ -40,3 +40,25 @@ Run IBS-BAP.
 ```bash
 python IBS_BAP.py
 ```
+
+## GUI composition
+![composition](config/images/IBS_BAP_Composition.jpg)
+### File - Open files (Ctrl + O)
+You can open image (*.jpg, *.png) or video (*.mp4) files and filelist is on the bottom center.
+### Image
+You can see image or frame in the left panel.
+* If you **drag with mouse left click**, you can make bounding box to annotate with class indicated on the top right panel ("fore" in this example). You can change class by click scroll-down or number in the keyboard (0-9 maximum).
+* To remove the bounding box, you can simply **mouse right-click** nearby your target box.
+### Class selection
+* You can choose class for annotation. **Default is AVATAR3D configuration** (7 classes: fore, hind, nose, head, ass, tail, torso).
+* If you want to annotate other classes, you can edit "class" section in "./config/AVATAR3D_config.json".
+### Bounding boxes list
+* You can find current bounding boxes. If you click the item then it will be highlighted as **red box** in the image.
+### Controller
+* Play: ▶ (Space) / ⏸(Space) button
+* Move frame: "< (d)" previous frame / "> (f)" next frame
+### Buttons
+* Save current BBox (Ctrl + S): Save current image and bounding boxes
+* Save all BBox: Save image and bounding boxes for frames which has bounding boxes
+* Run yolo11: Predict keypoint using yolo11. If you have NVIDIA GPU and properly setup with **CUDA driver** and **pytorch cudatoolkit**, you can use GPU for prediction.
+* Stop task: You can terminate ongoing task (ex. yolo11 prediction or saving process)
