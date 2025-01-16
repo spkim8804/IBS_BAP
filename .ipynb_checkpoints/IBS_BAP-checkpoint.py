@@ -8,7 +8,6 @@ import numpy as np
 import json
 import random
 import os
-import multiprocessing
 import platform
 
 from PyQt5.QtWidgets import (
@@ -211,7 +210,6 @@ class IBS_BAP(QMainWindow):
 
     def load_bounding_boxes(self, bbox_path, video_width, video_height):
         bounding_boxes = []
-        print(bbox_path)
         if os.path.exists(bbox_path): # 파일이 존재하는지 확인
             with open(bbox_path, "r") as f:
                 for line in f:
@@ -264,7 +262,6 @@ class IBS_BAP(QMainWindow):
             temp_writer.release()
             self.bounding_boxes = {}
             self.bounding_boxes[1] = self.load_bounding_boxes(f"{directory}/{filename}.txt", width, height)
-            print(self.bounding_boxes)
             self.cap = cv2.VideoCapture(temp_path)
         else:
             # Check video format (if not I-frame, it should be re-encoded for proper use)
@@ -646,7 +643,6 @@ class IBS_BAP(QMainWindow):
 
     ### Video conversion start #####################
     def on_conversion_complete(self, video_path):
-        print(video_path)
         self.filelist.append(video_path)
         self.playlist.addItems([video_path])
         self.statusBar().showMessage("Video conversion completed and added in the filelist")

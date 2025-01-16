@@ -101,4 +101,7 @@ class YoloSaver(QThread):
         """스레드 실행 중지"""
         self.is_running = False
         self.cap.release()
+
+if __name__ == "__main__":
+    freeze_support()
         

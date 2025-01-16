@@ -105,7 +105,6 @@ class ConvertVideoToIframe(QThread):
             raise RuntimeError(f"Error getting bitrate: {result.stderr}")
  
     def run(self):
-        print(self.video_path)
         directory, filename = os.path.split(self.video_path)
         filename, ext = os.path.splitext(filename)
         output_path = f"{directory}/{filename}_iframe{ext}"
