@@ -189,6 +189,6 @@ class YoloRunner(QThread):
         self.is_running = False
         self.cap.release()
         
-# if __name__ == "__main__":
-#     multiprocessing.freeze_support()
+if __name__ == "__main__":
+    multiprocessing.freeze_support()
     
