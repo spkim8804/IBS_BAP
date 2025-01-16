@@ -44,7 +44,8 @@ python IBS_BAP.py
 ## GUI composition
 ![composition](config/images/IBS_BAP_Composition.jpg)
 ### File - Open files (Ctrl + O)
-You can open image (*.jpg, *.png) or video (*.mp4) files and filelist is on the bottom center.
+You can open image (".jpg", ".png") or video (".mp4") files and filelist is on the bottom center.
+If you have annotation data (".txt" and ".json" for for image and mp4 file, respectively) with same filename, the program will automatically load corresponding annotation file.
 ### Image
 You can see image or frame in the left panel.
 * If you **drag with mouse left click**, you can make bounding box to annotate with class indicated on the top right panel ("fore" in this example). You can change class by click scroll-down or number in the keyboard (0-9 maximum).
