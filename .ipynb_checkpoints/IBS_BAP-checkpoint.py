@@ -582,7 +582,6 @@ class IBS_BAP(QMainWindow):
     
     def save_files(self, mode):
         if self.current_ext == ".mp4":
-            print(self.bounding_boxes)
             save_path = f"{self.current_directory}/{self.current_filename}.json"
             with open(save_path, 'w') as f:
                 json.dump(self.bounding_boxes, f, indent=4)
@@ -738,7 +737,7 @@ class VideoConverterWindow(QWidget):
         
 ### Main program start ###############
 if __name__ == "__main__":
-    # multiprocessing.freeze_support()
+    multiprocessing.freeze_support()
     
     app = QApplication.instance()
     if app is None:
