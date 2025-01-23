@@ -57,7 +57,7 @@
             ]
         }
     },
-    "yolo11_model_path": "./weights/20241216_m_yolov4_data.pt",
+    "yolo11_model_path": "./weights/20250122_359_AVATAR3D.pt",
     "keypoint":{
         "cnt": 9,
         "id": [
