@@ -2,7 +2,13 @@ import sys
 import os
 import subprocess
 import re
+import json
 from PyQt5.QtCore import QTimer, Qt, QPoint, QThread, pyqtSignal
+from PyQt5.QtWidgets import (
+    QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout,
+    QWidget, QFileDialog, QSlider, QHBoxLayout, QListWidget, QListWidgetItem,
+    QComboBox, QScrollArea, QMenuBar, QAction, QMessageBox, QDialog, QProgressBar
+)
 
 class CheckVideoFormat(QThread):
     progress = pyqtSignal(str)
@@ -65,7 +71,7 @@ class CheckVideoFormat(QThread):
         return frames
 
 class ConvertVideoToIframe(QThread):
-    progress_signal = pyqtSignal(int)
+    progress_signal = pyqtSignal(str)
     status_signal = pyqtSignal(str)
     result = pyqtSignal(str)
     
@@ -103,13 +109,38 @@ class ConvertVideoToIframe(QThread):
             return int(result.stdout.strip())
         else:
             raise RuntimeError(f"Error getting bitrate: {result.stderr}")
- 
+
+    def get_avg_frame_rate(self, video_path):
+        ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe.exe")
+        cmd = [
+            ffprobe_path,
+            "-i", video_path,
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=avg_frame_rate",
+            "-of", "json"
+        ]
+        try:
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            data = json.loads(result.stdout)
+            
+            if "streams" in data and len(data["streams"]) > 0:
+                avg_frame_rate = data["streams"][0].get("avg_frame_rate", "N/A")
+                num, den = map(int, avg_frame_rate.split('/'))
+                return num / den if den != 0 else 0
+            else:
+                return None
+        except Exception as e:
+            print(f"Error: {e}")
+            return None
+        
     def run(self):
         directory, filename = os.path.split(self.video_path)
         filename, ext = os.path.splitext(filename)
         output_path = f"{directory}/{filename}_iframe{ext}"
         
         bitrate = self.get_bitrate(self.video_path)
+        framerate = str(self.get_avg_frame_rate(self.video_path))
         
         try:
             ffmpeg_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffmpeg.exe")
@@ -120,9 +151,12 @@ class ConvertVideoToIframe(QThread):
                 ffmpeg_path,
                 # "ffmpeg", 
                 "-i", self.video_path,
+                "-r", framerate,
                 "-g", "1",
-                "-c:v", "libx264", "-b:v", f"{bitrate}",
-                "-an", output_path, "-y"
+                "-c:v", "libx264",
+                "-b:v", f"{bitrate}",
+                "-an",
+                output_path, "-y"
             ]
 
             process = subprocess.Popen(command, stderr=subprocess.PIPE,
@@ -142,8 +176,8 @@ class ConvertVideoToIframe(QThread):
                             int(match.group(2)) * 60 +
                             float(match.group(3))
                         )
-                        progress = (elapsed_time / total_duration) * 100
-                        self.progress_signal.emit(int(progress))
+                        progress = f"{((elapsed_time / total_duration) * 100):.2f}"
+                        self.progress_signal.emit(progress)
 
             process.wait()
 
@@ -207,4 +241,70 @@ def check_video_format(video_path, time = 1):
     elif "I" in frame_types:
         return "I"
 
+class VideoConverterWindow(QWidget):
+    conversion_complete_signal = pyqtSignal(str)
+    
+    def __init__(self, input_file):
+        super().__init__()
+        self.setWindowTitle("Video Converter")
+        self.setGeometry(100, 100, 200, 100)
+
+        self.input_file = input_file
+        
+        self.init_gui()
+
+    def init_gui(self):
+        layout = QVBoxLayout()
+
+        # Progress Bar
+        self.progress_label = QLabel("Progress: 0.00%")
+        self.progress_bar = QProgressBar()
+        layout.addWidget(self.progress_label)
+        layout.addWidget(self.progress_bar)
+
+        # Start and Stop Buttons
+        button_layout = QHBoxLayout()
+        self.start_button = QPushButton("Start Conversion")
+        self.start_button.clicked.connect(self.start_conversion)
+        button_layout.addWidget(self.start_button)
+
+        self.stop_button = QPushButton("Stop Conversion")
+        self.stop_button.clicked.connect(self.stop_conversion)
+        self.stop_button.setEnabled(False)
+        button_layout.addWidget(self.stop_button)
+
+        layout.addLayout(button_layout)
+
+        self.setLayout(layout)
+
+    def start_conversion(self):
+        self.worker = ConvertVideoToIframe(self.input_file)
+        self.worker.progress_signal.connect(self.update_progress)
+        self.worker.status_signal.connect(self.update_status)
+        self.worker.result.connect(self.on_conversion_finished)
+
+        self.start_button.setEnabled(False)
+        self.stop_button.setEnabled(True)
+
+        self.worker.start()
+
+    def stop_conversion(self):
+        if self.worker:
+            self.worker.stop()
+            self.worker = None
+            self.close()
+
+    def update_progress(self, progress):
+        self.progress_bar.setValue(int(float(progress)))
+        self.progress_label.setText(f"Progress: {progress}%")
+
+    def update_status(self, status):
+        self.progress_label.setText(status)
+
+    def on_conversion_finished(self, video_path):
+        self.progress_bar.setValue(100)
+        self.start_button.setEnabled(True)
+        self.stop_button.setEnabled(False)
+        self.conversion_complete_signal.emit(video_path)
+        self.close()
     

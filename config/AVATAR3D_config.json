@@ -61,10 +61,10 @@
     "keypoint":{
         "cnt": 9,
         "id": [
-            "nose", "head", "ass", "torso", "lhand", "rhand", "lleg", "rleg", "tail"
+            "nose", "head", "ass", "chest", "rleg", "lleg", "rarm", "larm", "tail"
         ],
         "line": [
-          [0,1], [1,3], [3,2], [3,4], [3,5], [2,6], [2,7], [2,8]
+            [0, 1], [1, 3], [3, 2], [2, 4], [2, 5], [3, 6], [3, 7], [2, 8]
         ]
     },
     "class":[

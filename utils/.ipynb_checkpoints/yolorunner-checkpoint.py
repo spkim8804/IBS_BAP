@@ -26,6 +26,7 @@ class YoloRunner(QThread):
         self.video_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         # self.fps = self.cap.get(cv2.CAP_PROP_FPS)
         self.output = []
+        self.model = None
 
         self.is_running = True
 
@@ -80,7 +81,7 @@ class YoloRunner(QThread):
                 
                 ret, frame = self.cap.read()
                 if ret:                    
-                    results = self.model(frame, iou=0.4, conf=0.3, verbose=False)
+                    results = self.model(frame, iou=0.4, conf=0.25, verbose=False)
                     self.progress.emit(f"Predict frame {current_frame}/{self.total_frames}...")
 
                     # Draw bounding box and center

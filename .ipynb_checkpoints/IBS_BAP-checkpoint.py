@@ -1,4 +1,4 @@
-# 2024-01-15 ver
+# 2024-01-27 ver
 # Index: File management, Video controller, Load configuration, Yolo class, Yolo running
 #        Update frame, Mouse control, Keyboard control, BBox management, 
 #        Task management, Video conversion, Main program
@@ -21,7 +21,7 @@ from PyQt5.QtCore import QTimer, Qt, QPoint, QThread, pyqtSignal
 
 from utils import (
     get_screen_resolution, CheckVideoFormat, ConvertVideoToIframe, check_video_format,
-    YoloRunner, YoloSaver, calc_min_distance
+    YoloRunner, YoloSaver, calc_min_distance, VideoConverterWindow
 )
         
 class IBS_BAP(QMainWindow):
@@ -61,6 +61,10 @@ class IBS_BAP(QMainWindow):
         save_all_action.triggered.connect(lambda: self.save_files("all"))
         file_menu.addAction(save_all_action)
 
+        save_json_action = QAction("Save to json file", self)
+        save_json_action.triggered.connect(self.save_json)
+        file_menu.addAction(save_json_action)
+        
         exit_action = QAction("Exit", self)
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
@@ -581,11 +585,6 @@ class IBS_BAP(QMainWindow):
                 )
     
     def save_files(self, mode):
-        if self.current_ext == ".mp4":
-            save_path = f"{self.current_directory}/{self.current_filename}.json"
-            with open(save_path, 'w') as f:
-                json.dump(self.bounding_boxes, f, indent=4)
-        
         if self.cap:
             self.cap_save = cv2.VideoCapture(self.current_videopath)
             self.statusBar().showMessage("Saving..")
@@ -601,6 +600,14 @@ class IBS_BAP(QMainWindow):
             self.save_task.finished.connect(lambda: self.statusBar().showMessage("Save completed!"))
             self.save_task.stopped.connect(self.handle_task_stopped)
             self.save_task.start()
+
+    def save_json(self):
+        if self.current_ext == ".mp4":
+            save_path = f"{self.current_directory}/{self.current_filename}.json"
+            with open(save_path, 'w') as f:
+                json.dump(self.bounding_boxes, f, indent=4)
+        else:
+            QMessageBox.warning(self, "QMessageBox", "Save to json is for mp4 file")
         
     def delete_selected_box(self):
         selected = self.bbox_list.currentRow()
@@ -666,75 +673,7 @@ class IBS_BAP(QMainWindow):
             event.accept()
         else:
             event.accept()
-
-            
-class VideoConverterWindow(QWidget):
-    conversion_complete_signal = pyqtSignal(str)
     
-    def __init__(self, input_file):
-        super().__init__()
-        self.setWindowTitle("Video Converter")
-        self.setGeometry(100, 100, 200, 100)
-
-        self.input_file = input_file
-        
-        self.init_gui()
-
-    def init_gui(self):
-        layout = QVBoxLayout()
-
-        # Progress Bar
-        self.progress_label = QLabel("Progress: 0.00%")
-        self.progress_bar = QProgressBar()
-        layout.addWidget(self.progress_label)
-        layout.addWidget(self.progress_bar)
-
-        # Start and Stop Buttons
-        button_layout = QHBoxLayout()
-        self.start_button = QPushButton("Start Conversion")
-        self.start_button.clicked.connect(self.start_conversion)
-        button_layout.addWidget(self.start_button)
-
-        self.stop_button = QPushButton("Stop Conversion")
-        self.stop_button.clicked.connect(self.stop_conversion)
-        self.stop_button.setEnabled(False)
-        button_layout.addWidget(self.stop_button)
-
-        layout.addLayout(button_layout)
-
-        self.setLayout(layout)
-
-    def start_conversion(self):
-        self.worker = ConvertVideoToIframe(self.input_file)
-        self.worker.progress_signal.connect(self.update_progress)
-        self.worker.status_signal.connect(self.update_status)
-        self.worker.result.connect(self.on_conversion_finished)
-
-        self.start_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
-
-        self.worker.start()
-
-    def stop_conversion(self):
-        if self.worker:
-            self.worker.stop()
-            self.worker = None
-            self.close()
-
-    def update_progress(self, progress):
-        self.progress_bar.setValue(progress)
-        self.progress_label.setText(f"Progress: {progress:.2f}%")
-
-    def update_status(self, status):
-        self.progress_label.setText(status)
-
-    def on_conversion_finished(self, video_path):
-        self.progress_bar.setValue(100)
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        self.conversion_complete_signal.emit(video_path)
-        self.close()
-        
 ### Main program start ###############
 if __name__ == "__main__":
     multiprocessing.freeze_support()
