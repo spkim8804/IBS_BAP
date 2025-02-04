@@ -30,11 +30,11 @@ class YoloRunner(QThread):
         self.model = None
 
         self.is_running = True
-
-        if platform.system() == "Windows":
-            config_path = os.path.join(os.getcwd(), "config\\AVATAR3D_config.json")
-        else:
-            config_path = os.path.join(os.getcwd(), "config/AVATAR3D_config.json")
+        config_path = os.path.join(os.getcwd(), "config/AVATAR3D_config.json")
+        # if platform.system() == "Windows":
+        #     config_path = os.path.join(os.getcwd(), "config\\AVATAR3D_config.json")
+        # else:
+        #     config_path = os.path.join(os.getcwd(), "config/AVATAR3D_config.json")
         
         with open(config_path, "r") as f:
             config = json.load(f)
@@ -67,15 +67,19 @@ class YoloRunner(QThread):
             [ 1201, 1001, 2400, 2000]
         ]
 
+    def export_results(self):
+        self.result.emit({
+            "bounding_boxes": self.bounding_boxes,
+            "predicted_frame": self.predicted_frame,
+            "raw_coordinates": self.output
+        })
+        self.stopped.emit()
+        self.cap.release()
+        
     def run(self):
         for current_frame in range(1, self.total_frames + 1):
             if not self.is_running: # Interrupted by stop button
-                self.progress.emit("[!] Yolo prediction stopped by user.")
-                self.result.emit({
-                    "bounding_boxes": self.bounding_boxes,
-                    "predicted_frame": self.predicted_frame
-                })
-                self.stopped.emit()
+                self.progress.emit("[!] Yolo prediction stopped by user.")                
                 break
             
             raw_coordinates = [0] * 135
@@ -176,18 +180,12 @@ class YoloRunner(QThread):
             self.output.append(raw_coordinates)
 
         if self.is_running:
+            self.progress.emit("Pose estimation complete!")
+            self.export_result()
             # Save to txt file
             with open('result.txt', 'w') as file:
                 for row in self.output:
                     file.write('\t'.join(map(str, row)) + '\n')
-            
-            self.result.emit({
-                "bounding_boxes": self.bounding_boxes,
-                "predicted_frame": self.predicted_frame,
-                "raw_coordinates": raw_coordinates
-            })
-            self.progress.emit("Pose estimation complete!")
-            self.cap.release()
             
         self.finished.emit()
 
