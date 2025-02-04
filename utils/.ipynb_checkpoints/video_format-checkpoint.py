@@ -193,15 +193,15 @@ class ConvertVideoToIframe(QThread):
             ]
 
             if platform.system() == "Windows":
-                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                result = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
                                text=True, creationflags=subprocess.CREATE_NO_WINDOW)
             else:
-                result = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                result = subprocess.Popen(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                            preexec_fn=os.setpgrp)
 
-            for line in iter(process.stderr.readline, ""):
+            for line in iter(result.stderr.readline, ""):
                 if not self.running:
-                    process.terminate()
+                    result.terminate()
                     self.status_signal.emit("Conversion stopped.")
                     return
 
@@ -216,9 +216,9 @@ class ConvertVideoToIframe(QThread):
                         progress = f"{((elapsed_time / total_duration) * 100):.2f}"
                         self.progress_signal.emit(progress)
 
-            process.wait()
+            result.wait()
 
-            if process.returncode == 0:
+            if result.returncode == 0:
                 self.status_signal.emit("Conversion completed successfully!")
                 self.result.emit(output_path)
             else:
