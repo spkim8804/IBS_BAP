@@ -2,7 +2,7 @@
 * IBS-BAP is a project aimed at creating a powerful and convenient behavior analysis program.
 * The ultimate goal is to enable one-step behavior analysis, from classification to analysis, directly from images or videos.
 * Currently, it supports pose estimation using YOLO11, as well as visualization and management of bounding box label data.
-* 2025/02/04 now macOS is fully functional
+* 2025/02/04: Confirmed that IBS-BAP is working well on macOS.
 
 ## Features
 Visualize image file (jpg, png) and video file (mp4) and make bounding boxes. In case of mp4 file, if it is not **i-frame video**, the program will offer you to convert your video (Generate new mp4 file with "_iframe" in the same directory)
