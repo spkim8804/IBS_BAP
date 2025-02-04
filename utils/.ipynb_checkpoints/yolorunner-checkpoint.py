@@ -3,6 +3,7 @@ import os
 import torch
 import multiprocessing
 import json
+import platform
 
 from ultralytics import YOLO
 from PyQt5.QtCore import QTimer, Qt, QPoint, QThread, pyqtSignal
@@ -30,7 +31,10 @@ class YoloRunner(QThread):
 
         self.is_running = True
 
-        config_path = os.path.join(os.getcwd(), "config\\AVATAR3D_config.json")
+        if platform.system() == "Windows":
+            config_path = os.path.join(os.getcwd(), "config\\AVATAR3D_config.json")
+        else:
+            config_path = os.path.join(os.getcwd(), "config/AVATAR3D_config.json")
         
         with open(config_path, "r") as f:
             config = json.load(f)

@@ -10,7 +10,6 @@ from PyQt5.QtWidgets import (
     QWidget, QFileDialog, QSlider, QHBoxLayout, QListWidget, QListWidgetItem,
     QComboBox, QScrollArea, QMenuBar, QAction, QMessageBox, QDialog, QProgressBar
 )
-import ffmpeg
 
 class CheckVideoFormat(QThread):
     progress = pyqtSignal(str)
@@ -24,8 +23,8 @@ class CheckVideoFormat(QThread):
         self.ffprobe_path = None
         
         if platform.system() == "Darwin":
-            self.ffmpeg_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffmpeg")
-            self.ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe")
+            self.ffmpeg_path = os.path.join(os.getcwd(), "utils/ffmpeg/ffmpeg")
+            self.ffprobe_path = os.path.join(os.getcwd(), "utils/ffmpeg/ffprobe")
             subprocess.run(["chmod", "+x", self.ffmpeg_path])
             subprocess.run(["chmod", "+x", self.ffprobe_path])
         else:
@@ -59,8 +58,12 @@ class CheckVideoFormat(QThread):
             "-an",
             output_path
         ]
-        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
-                       text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        if platform.system() == "Windows":
+            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                           text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        else:
+            subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           preexec_fn=os.setpgrp)
         return output_path
     
     def analyze_video(self, video_path):        
@@ -72,9 +75,13 @@ class CheckVideoFormat(QThread):
             "-show_entries", "frame=pict_type",
             "-of", "csv"
         ]
-        
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
-                                text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        if platform.system() == "Windows":
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                           text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        else:
+            result = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           preexec_fn=os.setpgrp)
+            
         frames = [
             line.split(",")[-1] for line in result.stdout.splitlines()
             if line.startswith("frame") and line.split(",")[-1].strip() != ""
@@ -95,8 +102,8 @@ class ConvertVideoToIframe(QThread):
         self.ffprobe_path = None
         
         if platform.system() == "Darwin":
-            self.ffmpeg_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffmpeg")
-            self.ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe")
+            self.ffmpeg_path = os.path.join(os.getcwd(), "utils/ffmpeg/ffmpeg")
+            self.ffprobe_path = os.path.join(os.getcwd(), "utils/ffmpeg/ffprobe")
             subprocess.run(["chmod", "+x", self.ffmpeg_path])
             subprocess.run(["chmod", "+x", self.ffprobe_path])
         else:
@@ -104,26 +111,36 @@ class ConvertVideoToIframe(QThread):
             self.ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe.exe")
 
     def get_total_duration(self, video_path):        
-        command = [
+        cmd = [
             self.ffprobe_path,
             "-v", "error", "-show_entries",
             "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", video_path
         ]
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        if platform.system() == "Windows":
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                           text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        else:
+            result = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           preexec_fn=os.setpgrp)
+            
         if result.returncode == 0:
             return float(result.stdout.strip())
         else:
             raise RuntimeError(f"Error getting duration: {result.stderr}")
 
     def get_bitrate(self, video_path):            
-        command = [
+        cmd = [
             self.ffprobe_path, 
             "-v", "error", "-select_streams", "v:0",
             "-show_entries", "stream=bit_rate", "-of", "default=noprint_wrappers=1:nokey=1", video_path
         ]
-        result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        if platform.system() == "Windows":
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                           text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        else:
+            result = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           preexec_fn=os.setpgrp)
+            
         if result.returncode == 0:
             return int(result.stdout.strip())
         else:
@@ -164,7 +181,7 @@ class ConvertVideoToIframe(QThread):
             total_duration = self.get_total_duration(self.video_path)
             bitrate = self.get_bitrate(self.video_path)
         
-            command = [
+            cmd = [
                 self.ffmpeg_path,
                 "-i", self.video_path,
                 "-r", framerate,
@@ -175,8 +192,12 @@ class ConvertVideoToIframe(QThread):
                 output_path, "-y"
             ]
 
-            process = subprocess.Popen(command, stderr=subprocess.PIPE,
-                                       text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            if platform.system() == "Windows":
+                result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                               text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+            else:
+                result = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           preexec_fn=os.setpgrp)
 
             for line in iter(process.stderr.readline, ""):
                 if not self.running:
@@ -222,12 +243,16 @@ def check_video_format(video_path, time = 1):
             "-an",
             output_path
         ]
-        subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                       text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        if platform.system() == "Windows":
+            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                           text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        else:
+            subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           preexec_fn=os.setpgrp)
+            
         return output_path
     
     def analyze_video(video_path):
-        ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe.exe")
         cmd = [
             ffprobe_path,
             "-i", video_path,
@@ -235,9 +260,13 @@ def check_video_format(video_path, time = 1):
             "-show_entries", "frame=pict_type",
             "-of", "csv"
         ]
+        if platform.system() == "Windows":
+            result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, 
+                           text=True, creationflags=subprocess.CREATE_NO_WINDOW)
+        else:
+            result = subprocess.run(cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                           preexec_fn=os.setpgrp)
         
-        result = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                text=True, creationflags=subprocess.CREATE_NO_WINDOW)
         frames = [
             line.split(",")[-1] for line in result.stdout.splitlines()
             if line.startswith("frame") and line.split(",")[-1].strip() != ""
@@ -245,8 +274,8 @@ def check_video_format(video_path, time = 1):
         return frames
     
     if platform.system() == "Darwin":
-        ffmpeg_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffmpeg")
-        ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe")
+        ffmpeg_path = os.path.join(os.getcwd(), "utils/ffmpeg/ffmpeg")
+        ffprobe_path = os.path.join(os.getcwd(), "utils/ffmpeg/ffprobe")
         subprocess.run(["chmod", "+x", ffmpeg_path])
         subprocess.run(["chmod", "+x", ffprobe_path])
     else:
