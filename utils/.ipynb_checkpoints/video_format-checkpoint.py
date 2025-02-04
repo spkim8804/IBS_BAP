@@ -3,12 +3,14 @@ import os
 import subprocess
 import re
 import json
+import platform
 from PyQt5.QtCore import QTimer, Qt, QPoint, QThread, pyqtSignal
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout,
     QWidget, QFileDialog, QSlider, QHBoxLayout, QListWidget, QListWidgetItem,
     QComboBox, QScrollArea, QMenuBar, QAction, QMessageBox, QDialog, QProgressBar
 )
+import ffmpeg
 
 class CheckVideoFormat(QThread):
     progress = pyqtSignal(str)
@@ -18,6 +20,17 @@ class CheckVideoFormat(QThread):
         super().__init__()
         self.video_path = video_path
         self.time = time
+        self.ffmpeg_path = None
+        self.ffprobe_path = None
+        
+        if platform.system() == "Darwin":
+            self.ffmpeg_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffmpeg")
+            self.ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe")
+            subprocess.run(["chmod", "+x", self.ffmpeg_path])
+            subprocess.run(["chmod", "+x", self.ffprobe_path])
+        else:
+            self.ffmpeg_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffmpeg.exe")
+            self.ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe.exe")
         
     def run(self):
         self.progress.emit("Checking video format..")
@@ -35,9 +48,8 @@ class CheckVideoFormat(QThread):
         self.progress.emit("Checking video format completed!")
         
     def extract_first_frames(self, video_path, time, output_path="video_format_check.mp4"):
-        ffmpeg_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffmpeg.exe")
         cmd = [
-            ffmpeg_path,
+            self.ffmpeg_path,
             # "ffmpeg",
             "-ss", "0",
             "-t", f"{time}",
@@ -51,10 +63,9 @@ class CheckVideoFormat(QThread):
                        text=True, creationflags=subprocess.CREATE_NO_WINDOW)
         return output_path
     
-    def analyze_video(self, video_path):
-        ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe.exe")
+    def analyze_video(self, video_path):        
         cmd = [
-            ffprobe_path,
+            self.ffprobe_path,
             # "ffprobe",
             "-i", video_path,
             "-show_frames",
@@ -79,12 +90,22 @@ class ConvertVideoToIframe(QThread):
         super().__init__()
         self.video_path = video_path
         self.running = True
+        
+        self.ffmpeg_path = None
+        self.ffprobe_path = None
+        
+        if platform.system() == "Darwin":
+            self.ffmpeg_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffmpeg")
+            self.ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe")
+            subprocess.run(["chmod", "+x", self.ffmpeg_path])
+            subprocess.run(["chmod", "+x", self.ffprobe_path])
+        else:
+            self.ffmpeg_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffmpeg.exe")
+            self.ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe.exe")
 
-    def get_total_duration(self, video_path):
-        ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe.exe")
+    def get_total_duration(self, video_path):        
         command = [
-            ffprobe_path,
-            # "ffprobe",
+            self.ffprobe_path,
             "-v", "error", "-show_entries",
             "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", video_path
         ]
@@ -95,11 +116,9 @@ class ConvertVideoToIframe(QThread):
         else:
             raise RuntimeError(f"Error getting duration: {result.stderr}")
 
-    def get_bitrate(self, video_path):
-        ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe.exe")
+    def get_bitrate(self, video_path):            
         command = [
-            ffprobe_path, 
-            # "ffprobe",
+            self.ffprobe_path, 
             "-v", "error", "-select_streams", "v:0",
             "-show_entries", "stream=bit_rate", "-of", "default=noprint_wrappers=1:nokey=1", video_path
         ]
@@ -110,10 +129,9 @@ class ConvertVideoToIframe(QThread):
         else:
             raise RuntimeError(f"Error getting bitrate: {result.stderr}")
 
-    def get_avg_frame_rate(self, video_path):
-        ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe.exe")
+    def get_avg_frame_rate(self, video_path):            
         cmd = [
-            ffprobe_path,
+            self.ffprobe_path,
             "-i", video_path,
             "-v", "error",
             "-select_streams", "v:0",
@@ -142,14 +160,12 @@ class ConvertVideoToIframe(QThread):
         bitrate = self.get_bitrate(self.video_path)
         framerate = str(self.get_avg_frame_rate(self.video_path))
         
-        try:
-            ffmpeg_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffmpeg.exe")
+        try:                
             total_duration = self.get_total_duration(self.video_path)
             bitrate = self.get_bitrate(self.video_path)
-
+        
             command = [
-                ffmpeg_path,
-                # "ffmpeg", 
+                self.ffmpeg_path,
                 "-i", self.video_path,
                 "-r", framerate,
                 "-g", "1",
@@ -195,8 +211,7 @@ class ConvertVideoToIframe(QThread):
 
 
 def check_video_format(video_path, time = 1):        
-    def extract_first_frames(video_path, time, output_path="video_format_check.mp4"):
-        ffmpeg_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffmpeg.exe")
+    def extract_first_frames(video_path, time, output_path="video_format_check.mp4"):                
         cmd = [
             ffmpeg_path,
             "-ss", "0",
@@ -228,6 +243,15 @@ def check_video_format(video_path, time = 1):
             if line.startswith("frame") and line.split(",")[-1].strip() != ""
         ]
         return frames
+    
+    if platform.system() == "Darwin":
+        ffmpeg_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffmpeg")
+        ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe")
+        subprocess.run(["chmod", "+x", ffmpeg_path])
+        subprocess.run(["chmod", "+x", ffprobe_path])
+    else:
+        ffmpeg_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffmpeg.exe")
+        ffprobe_path = os.path.join(os.getcwd(), "utils\\ffmpeg\\ffprobe.exe")
 
     output_video = extract_first_frames(video_path, time)
     frame_types = analyze_video(output_video)
