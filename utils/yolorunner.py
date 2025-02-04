@@ -183,7 +183,8 @@ class YoloRunner(QThread):
             
             self.result.emit({
                 "bounding_boxes": self.bounding_boxes,
-                "predicted_frame": self.predicted_frame
+                "predicted_frame": self.predicted_frame,
+                "raw_coordinates": raw_coordinates
             })
             self.progress.emit("Pose estimation complete!")
             self.cap.release()
