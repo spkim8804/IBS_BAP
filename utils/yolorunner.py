@@ -16,12 +16,13 @@ class YoloRunner(QThread):
     result = pyqtSignal(dict)
     stopped = pyqtSignal()
 
-    def __init__(self, cap_yolo, predicted_frame, bounding_boxes):
+    def __init__(self, cap, predicted_frame, bounding_boxes, config_path):
         super().__init__()
-        self.cap = cap_yolo
+        self.cap = cap
         self.predicted_frame = predicted_frame
         self.bounding_boxes = bounding_boxes
-        self.yolo11_model_path = None
+        self.config_path = config_path
+        
         self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
         self.video_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         self.video_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -30,13 +31,13 @@ class YoloRunner(QThread):
         self.model = None
 
         self.is_running = True
-        config_path = os.path.join(os.getcwd(), "config/AVATAR3D_config.json")
+
         # if platform.system() == "Windows":
         #     config_path = os.path.join(os.getcwd(), "config\\AVATAR3D_config.json")
         # else:
         #     config_path = os.path.join(os.getcwd(), "config/AVATAR3D_config.json")
         
-        with open(config_path, "r") as f:
+        with open(self.config_path, "r") as f:
             config = json.load(f)
             self.yolo11_model_path = config.get("yolo11_model_path")
             

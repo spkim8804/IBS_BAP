@@ -1,5 +1,7 @@
 {
+    "recording": "AVATAR3D",
     "camera":{
+        "dimension": 3,
         "cnt": 5,
         "roi": [
             [0, 0, 1200, 1000],

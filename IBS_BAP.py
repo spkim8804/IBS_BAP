@@ -1,4 +1,4 @@
-# 2024-01-15 ver
+# 2025-02-04 ver
 # Index: File management, Video controller, Load configuration, Yolo class, Yolo running
 #        Update frame, Mouse control, Keyboard control, BBox management, 
 #        Task management, Video conversion, Main program
@@ -23,10 +23,13 @@ from PyQt5.QtCore import QTimer, Qt, QPoint, QThread, pyqtSignal
 
 from utils import (
     get_screen_resolution, CheckVideoFormat, ConvertVideoToIframe, check_video_format,
-    YoloRunner, YoloSaver, calc_min_distance, VideoConverterWindow, PoseVisualizer
+    YoloRunner, YoloSaver, calc_min_distance, VideoConverterWindow, PoseVisualizer,
+    Recon3D
 )
 
 class IBS_BAP(QMainWindow):
+    frame_signal = pyqtSignal(int)
+    
     def __init__(self):
         super().__init__()
         self.converter_window = None
@@ -184,6 +187,8 @@ class IBS_BAP(QMainWindow):
 
         ###### YOLO setting ############
         self.predicted_frame = []
+        self.raw_coordinates = []
+        self.visualizer_window = None
         
         # JSON setting
         self.classes = []
@@ -259,6 +264,9 @@ class IBS_BAP(QMainWindow):
                     self.cap.release()
                 if self.cap_yolo:
                     self.cap_yolo.release()
+                if self.visualizer_window:
+                    self.visualizer_window.close()
+                    self.visualizer_window = None
 
         file_path = item.text()
         directory, filename = os.path.split(file_path)
@@ -398,6 +406,9 @@ class IBS_BAP(QMainWindow):
     def save_yolo_result(self, results):
         self.bounding_boxes = results["bounding_boxes"]
         self.predicted_frame = results["predicted_frame"]
+        self.raw_coordinates = results["raw_coordinates"]
+        self.recon3d_task = Recon3D(input_path = self.current_videopath, raw_coordinates = self.raw_coordinates)
+        self.recon3d_task.start()
 
     def finish_yolo(self):
         self.statusBar().showMessage("Pose estimation completed!")
@@ -462,6 +473,11 @@ class IBS_BAP(QMainWindow):
                 self.current_frame_n += 1
                 self.current_frame = frame
                 self.render_frame(self.current_frame)
+                if self.visualizer_window:
+                    self.frame_signal.emit(self.current_frame_n)
+                    # self.frame_signal.connect(
+                    #     lambda: self.visualizer_window.on_slider_value_changed(self.current_frame_n)
+                    # )
             else:
                 self.pause_video()
     
@@ -675,21 +691,27 @@ class IBS_BAP(QMainWindow):
     ### Video conversion end #####################
 
     def pose_visualizer(self):
-        self.visualizer_window = PoseVisualizer(csv_file = "adult_6116.csv", config_file="./config/AVATAR3D_config.json")
-        # self.visualizer_window.conversion_complete_signal.connect(self.on_conversion_complete)
-        self.visualizer_window.show()
+        coordinates_path = f"{self.current_directory}/{self.current_filename}_coordinates.csv"
+        if not os.path.exists(coordinates_path):
+            QMessageBox.warning(self, "QMessageBox", "Coordinates file does not exists")
+        else:
+            self.visualizer_window = PoseVisualizer(
+                csv_file = coordinates_path,
+                config_file="./config/AVATAR3D_config.json"
+            )
+            # self.visualizer_window.conversion_complete_signal.connect(self.on_conversion_complete)
+            self.frame_signal.connect(lambda: self.visualizer_window.on_slider_value_changed(self.current_frame_n))
+            self.visualizer_window.show()
     
     def closeEvent(self, event):
         if self.converter_window is not None:
             self.converter_window.close()
-            event.accept()
-        else:
-            event.accept()
+        event.accept()
     
 ### Main program start ###############
 if __name__ == "__main__":
     multiprocessing.freeze_support()
-    
+
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv)
