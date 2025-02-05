@@ -144,7 +144,7 @@ class Point3DWidget(QOpenGLWidget):
 
 
 class PoseVisualizer(QMainWindow):
-    def __init__(self, csv_file="text.csv", config_file="./config/config.json"):
+    def __init__(self, csv_file="./samples/AVATAR3D_coordinates_example.csv", config_file="./config/config.json"):
         super().__init__()
         self.setWindowTitle("Pose Visualizer")
         self.setGeometry(100, 100, 800, 600)

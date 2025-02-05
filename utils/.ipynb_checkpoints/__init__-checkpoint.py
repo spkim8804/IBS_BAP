@@ -6,3 +6,4 @@ from .yolorunner import YoloRunner
 from .get_resolution import get_screen_resolution
 from .video_format import CheckVideoFormat, ConvertVideoToIframe, check_video_format, VideoConverterWindow
 from .pose_visualizer import PoseVisualizer
+from .recon3d import Recon3D

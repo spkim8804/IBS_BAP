@@ -56,7 +56,9 @@ class YoloRunner(QThread):
         self.color_order = ["red", "orange", "yellow", "green", "blue", "skyblue", "purple", "black", "pink"]
         
         #To match darknet (YOLOv4), #4, 5: forelimb / #6, 7: hindlimb
-        self.rearrange = [4, 6, 0, 1, 2, 8, 3]
+        # 0: "nose", 1: "head", 2: "ass", 3: "chest", 4: "rleg", 5: "lleg", 6: "rarm", 7: "larm", 8: "tail"
+        # YOLO label: 0: "fore", 1: "hind", 2: "nose", 3: "head", 4: "ass", 5: "tail", 6: "torso"
+        self.rearrange = [6, 4, 0, 1, 2, 8, 3]
         
         # Five areas from captured frame (x1, y1, x2, y2)
         self.area = [
@@ -77,17 +79,19 @@ class YoloRunner(QThread):
         self.cap.release()
         
     def run(self):
+        raw_coordinates = [0] * 135
         for current_frame in range(1, self.total_frames + 1):
             if not self.is_running: # Interrupted by stop button
-                self.progress.emit("[!] Yolo prediction stopped by user.")                
+                self.progress.emit("[!] Yolo prediction stopped by user.")
+                self.export_results()
                 break
-            
-            raw_coordinates = [0] * 135
+
             if not self.predicted_frame[current_frame]:
                 if current_frame != int(self.cap.get(cv2.CAP_PROP_POS_FRAMES)) + 1:
                     self.cap.set(cv2.CAP_PROP_POS_FRAMES, current_frame - 1)
                 
                 ret, frame = self.cap.read()
+
                 if ret:                    
                     results = self.model(frame, iou=0.4, conf=0.25, verbose=False)
                     self.progress.emit(f"Predict frame {current_frame}/{self.total_frames}...")
@@ -95,6 +99,8 @@ class YoloRunner(QThread):
                     # Draw bounding box and center
                     check_cls = [[0 for _ in range(10)] for _ in range(10)]
                     raw_coordinates = [0] * 135
+                    if current_frame == 1:
+                        self.output.append(raw_coordinates)
 
                     for det in results[0].boxes:
                         # det: [x1, y1, x2, y2, conf, cls]
@@ -141,10 +147,10 @@ class YoloRunner(QThread):
                     self.predicted_frame[current_frame] = 1
                 
             # If feature is not detected, bring a previous value
-            # if(current_frame > 1):
-            #     for i in range(135):
-            #         if(raw_coordinates[i] == 0):
-            #             raw_coordinates[i] = self.output[current_frame - 1][i]
+            if(current_frame > 1):
+                for i in range(135):
+                    if(raw_coordinates[i] == 0):
+                        raw_coordinates[i] = self.output[current_frame - 1][i]
         
             # Measure an angle of each limb from body-ass line (4, 5: forelimb / 6, 7: hindlimb / 2: body / 3: ass)
         
@@ -181,7 +187,7 @@ class YoloRunner(QThread):
 
         if self.is_running:
             self.progress.emit("Pose estimation complete!")
-            self.export_result()
+            self.export_results()
             # Save to txt file
             with open('result.txt', 'w') as file:
                 for row in self.output:
