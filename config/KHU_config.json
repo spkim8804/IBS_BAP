@@ -13,7 +13,7 @@
 
         }
     },
-    "yolo11_model_path": "./weights/20250124_m_527_AVATAR3D_KHU.pt",
+    "yolo11_model_path": "./weights/20250205_m_180_KHU.pt",
     "keypoint":{
         "cnt": 9,
         "id": [
