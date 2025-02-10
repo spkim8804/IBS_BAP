@@ -31,11 +31,6 @@ class YoloRunner(QThread):
         self.model = None
 
         self.is_running = True
-
-        # if platform.system() == "Windows":
-        #     config_path = os.path.join(os.getcwd(), "config\\AVATAR3D_config.json")
-        # else:
-        #     config_path = os.path.join(os.getcwd(), "config/AVATAR3D_config.json")
         
         with open(self.config_path, "r") as f:
             config = json.load(f)
@@ -82,6 +77,9 @@ class YoloRunner(QThread):
     def run(self):
         raw_coordinates = [0] * 135
         for current_frame in range(1, self.total_frames + 1):
+            if current_frame == 1:
+                        self.output.append(raw_coordinates)
+                
             if not self.is_running: # Interrupted by stop button
                 self.progress.emit("[!] Yolo prediction stopped by user.")
                 self.export_results()
@@ -100,8 +98,6 @@ class YoloRunner(QThread):
                     # Draw bounding box and center
                     check_cls = [[0 for _ in range(10)] for _ in range(10)]
                     raw_coordinates = [0] * 135
-                    if current_frame == 1:
-                        self.output.append(raw_coordinates)
 
                     for det in results[0].boxes:
                         # det: [x1, y1, x2, y2, conf, cls]
