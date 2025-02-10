@@ -4,7 +4,7 @@ import json
 import os
 import glob
 
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QTextEdit
+from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QTextEdit, QPushButton
 
 def zero_replacing(points_data):
     """
@@ -87,28 +87,35 @@ class JsonViewer(QWidget):
 
         layout = QVBoxLayout()
 
-        self.text_area = QTextEdit()
-        self.text_area.setReadOnly(True)
-        layout.addWidget(self.text_area)
+        # Start and Stop Buttons
+        button_layout = QVBoxLayout()
+        self.start_button = QPushButton("Start Conversion")
+        button_layout.addWidget(self.start_button)
 
-        self.setLayout(layout)
+        layout.addLayout(button_layout)
+        
+        # self.text_area = QTextEdit()
+        # self.text_area.setReadOnly(True)
+        # layout.addWidget(self.text_area)
 
-        self.load_json(json_file_path)
+        # self.setLayout(layout)
+        
+        # self.load_json(json_file_path)
 
     def load_json(self, file_path):
         if not os.path.exists(file_path):
             self.text_area.setText(f"No file was found: {file_path}")
             return
 
-        try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                json_data = json.load(file)
+        # try:
+        #     with open(file_path, 'r', encoding='utf-8') as file:
+        #         json_data = json.load(file)
 
-            formatted_json = json.dumps(json_data, indent=4, ensure_ascii=False)
-            self.text_area.setText(formatted_json)
+        #     formatted_json = json.dumps(json_data, indent=4, ensure_ascii=False)
+        #     self.text_area.setText(formatted_json)
 
-        except Exception as e:
-            self.text_area.setText(f"Cannot open the file: {str(e)}")
+        # except Exception as e:
+        #     self.text_area.setText(f"Cannot open the file: {str(e)}")
 
 def find_json_files(directory):
     json_file_names = []
