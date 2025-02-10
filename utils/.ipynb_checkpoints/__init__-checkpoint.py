@@ -3,7 +3,6 @@ from .etc import zero_replacing, get_AB_AC_angle, calc_min_distance, JsonViewer,
 from .export_frame import export_frame_image, get_frame_types
 from .yolosaver import YoloSaver
 from .yolorunner import YoloRunner
-from .get_resolution import get_screen_resolution
 from .video_format import CheckVideoFormat, ConvertVideoToIframe, check_video_format, VideoConverterWindow
 from .pose_visualizer import PoseVisualizer
 from .recon3d import Recon3D
