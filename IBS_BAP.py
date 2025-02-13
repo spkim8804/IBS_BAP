@@ -1,4 +1,4 @@
-# 2025-02-04 ver
+# 2025-02-13 ver
 # Index: File management, Video controller, Load configuration, Yolo class, Yolo running
 #        Update frame, Mouse control, Keyboard control, BBox management, 
 #        Task management, Video conversion, Main program
@@ -10,6 +10,7 @@ import random
 import os
 import platform
 import multiprocessing
+import tkinter
 
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout, QHBoxLayout,
@@ -22,32 +23,57 @@ from PyQt5.QtGui import QImage, QPixmap, QPainter
 from PyQt5.QtCore import QTimer, Qt, QPoint, QThread, pyqtSignal
 
 from utils import (
-    get_screen_resolution, CheckVideoFormat, ConvertVideoToIframe, check_video_format,
+    CheckVideoFormat, ConvertVideoToIframe, check_video_format,
     YoloRunner, YoloSaver, calc_min_distance, VideoConverterWindow, PoseVisualizer,
-    Recon3D
+    Recon3D, JsonViewer, find_json_files
 )
 
 class IBS_BAP(QMainWindow):
     frame_signal = pyqtSignal(int)
     
-    def __init__(self):
+    def __init__(self, window_width = 1280, window_height = 720):
         super().__init__()
         self.converter_window = None
 
+        # ==== Video configuration initialization ======
+        self.is_playing = False
+        self.cap = None
+        self.cap_yolo = None
+        self.cap_save = None
+        self.filelist = []
+        self.total_frames = 0
+        self.fps = 0
+        self.current_frame = None
+        self.current_frame_n = 0
+        self.current_filename = None
+        self.current_ext= None
+        self.current_directory = None
+        self.current_videopath = None
+        self.video_speed = 50
+        self.video_player_width = window_width
+        self.video_player_height = window_height
+        
+        # ==== Timer setting ========
+        self.video_timer = QTimer(self)
+        self.video_timer.timeout.connect(self.update_frame)
+
+        # ======== Bounding Box ========
+        self.start_point = None
+        self.end_point = None
+        self.is_drawing = False
+        self.bounding_boxes = {}
+
         # Window size setting depending on the system resolution
-        # Default: HD resolution (1280 x 720)
-        self.video_player_width = 1280
-        self.video_player_height = 720
         os_name = platform.system()
         print(f"Current OS: {os_name}")
-        if os_name == "Windows":
-            self.video_player_width, self.video_player_height = get_screen_resolution()
+        print(f"Current resulution: {self.video_player_width} x {self.video_player_height}")
         
         self.video_player_width = int(self.video_player_width * 60 / 100)
         self.video_player_height = int(self.video_player_height * 60 / 100)
         
         self.setWindowTitle("IBS Behavior Analysis Program (BAP)")
         self.setGeometry(10, 40, int(self.video_player_width * 1.2), int(self.video_player_height * 1.2))
+        
         #### Menu bar ########################
         menu_bar = self.menuBar()
         menu_bar.setNativeMenuBar(False)
@@ -67,6 +93,10 @@ class IBS_BAP(QMainWindow):
         save_all_action.triggered.connect(lambda: self.save_files("all"))
         file_menu.addAction(save_all_action)
 
+        delete_all_bbox = QAction("Delete All BBoxes", self)
+        delete_all_bbox.triggered.connect(self.delete_all_bboxes)
+        file_menu.addAction(delete_all_bbox)
+
         save_json_action = QAction("Save to json file", self)
         save_json_action.triggered.connect(self.save_json)
         file_menu.addAction(save_json_action)
@@ -75,15 +105,20 @@ class IBS_BAP(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
 
-        edit_menu = menu_bar.addMenu("&Edit")
-        refresh_action = QAction("Refresh current frame", self)
-        refresh_action.setShortcut("F5")
-        refresh_action.triggered.connect(self.refresh_frame)
-        edit_menu.addAction(refresh_action)
+        edit_menu = menu_bar.addMenu("&Visualizer")
 
         pose_visualizer_action = QAction("Pose visualizer", self)
         pose_visualizer_action.triggered.connect(self.pose_visualizer)
         edit_menu.addAction(pose_visualizer_action)
+
+        config_menu = menu_bar.addMenu("&Config")
+        # change_config_action = QAction("Change config file", self)
+        # change_config_action.triggered.connect(self.change_config)
+        # config_menu.addAction(change_config_action)
+        
+        show_config_action = QAction("Show current config file", self)
+        show_config_action.triggered.connect(self.show_config)
+        config_menu.addAction(show_config_action)
         
         ### Status bar ########################
         self.status_label = QLabel("IBS_BAP by Sunpil Kim", self)
@@ -100,16 +135,26 @@ class IBS_BAP(QMainWindow):
         self.video_label.setStyleSheet("background-color: black;")
         self.scroll_area.setWidget(self.video_label)
 
+        ### Sliders ###########################
         # playback slider
         self.playback_slider = QSlider(Qt.Horizontal)
         self.playback_slider.setRange(0, 100)
         self.playback_slider.setValue(0)
+
+        # Video speed slider
+        self.speed_slider = QSlider(Qt.Horizontal)
+        self.speed_slider.setRange(1, 100)
+        self.speed_slider.setValue(self.video_speed)
+        self.speed_slider_label = QLabel("Video speed")
+        
+        # Label
         self.frame_label = QLabel("Frame: 0 / 0")
-        self.frame_label.setFixedWidth(120)
+        self.config_label = QLabel("Config selection (in config folder)")
         self.class_label = QLabel("Class selection")
         self.bbox_list_label = QLabel("Bounding boxes list")
 
         # Class selector (dropdown)
+        self.config_selector = QComboBox()
         self.class_selector = QComboBox()
         
         # Buttons
@@ -127,22 +172,37 @@ class IBS_BAP(QMainWindow):
         
         # Playlist
         self.playlist = QListWidget()
+        self.playlist.setFixedWidth(int(self.video_player_width / 2))
 
         # GUI layout
+        main_layout = QHBoxLayout()
+        
+        video_control_layout = QHBoxLayout()
+        video_control_layout.addWidget(self.play_button)
+        video_control_layout.addWidget(self.previous_frame_button)
+        video_control_layout.addWidget(self.next_frame_button)
+        video_control_layout.addWidget(self.frame_label)
+
+        speed_control_layout = QHBoxLayout()
+        speed_control_layout.addWidget(self.speed_slider_label)
+        speed_control_layout.addWidget(self.speed_slider)
+
+        control_layout = QVBoxLayout()
+        control_layout.addLayout(video_control_layout)
+        control_layout.addLayout(speed_control_layout)
+        
         controls_layout = QHBoxLayout()
-        controls_layout.addWidget(self.play_button)
-        controls_layout.addWidget(self.previous_frame_button)
-        controls_layout.addWidget(self.next_frame_button)
-        controls_layout.addWidget(self.frame_label)
+        controls_layout.addLayout(control_layout)
         controls_layout.addWidget(self.playlist)
 
-        main_layout = QHBoxLayout()
         video_layout = QVBoxLayout()
         video_layout.addWidget(self.scroll_area)
         video_layout.addWidget(self.playback_slider)
         video_layout.addLayout(controls_layout)
 
         bbox_layout = QVBoxLayout()
+        bbox_layout.addWidget(self.config_label)
+        bbox_layout.addWidget(self.config_selector)
         bbox_layout.addWidget(self.class_label)
         bbox_layout.addWidget(self.class_selector)
         bbox_layout.addWidget(self.bbox_list_label)
@@ -159,41 +219,6 @@ class IBS_BAP(QMainWindow):
         container = QWidget()
         container.setLayout(main_layout)
         self.setCentralWidget(container)
-
-        # ==== Video configuration ======
-        self.is_playing = False
-        self.cap = None
-        self.cap_yolo = None
-        self.cap_save = None
-        self.filelist = []
-        self.total_frames = 0
-        self.fps = 0
-        self.current_frame = None
-        self.current_frame_n = 0
-        self.current_filename = None
-        self.current_ext= None
-        self.current_directory = None
-        self.current_videopath = None
-        
-        # ==== Timer setting ========
-        self.video_timer = QTimer(self)
-        self.video_timer.timeout.connect(self.update_frame)
-
-        # ======== Bounding Box ========
-        self.start_point = None
-        self.end_point = None
-        self.is_drawing = False
-        self.bounding_boxes = {}
-
-        ###### YOLO setting ############
-        self.predicted_frame = []
-        self.raw_coordinates = []
-        self.visualizer_window = None
-        
-        # JSON setting
-        self.classes = []
-        self.current_class_id = 0
-        self.load_config()
         
         # ======== Keyboard event ========
         self.setFocusPolicy(Qt.StrongFocus)
@@ -204,6 +229,26 @@ class IBS_BAP(QMainWindow):
         self.zoom_scale = 1.0
         self.original_scale = 1.0
 
+        ###### YOLO setting ############
+        self.predicted_frame = []
+        self.raw_coordinates = []
+        self.visualizer_window = None
+        self.class_colors = []
+        self.yolo11_model_path = None
+        self.yolo_task = None
+        self.save_task = None
+        
+        ### Load confing files in config folder
+        self.config_list = find_json_files(f"{os.getcwd()}/config")
+        config_name_list = [os.path.basename(path) for path in self.config_list]
+        self.config_selector.addItems(config_name_list)
+        self.config_path = self.config_list[0]
+
+        ### JSON setting
+        self.classes = []
+        self.current_class_id = 0
+        self.load_config()
+
         # ======== Event handler connect ========
         self.play_button.clicked.connect(self.play_button_click)
         self.previous_frame_button.clicked.connect(self.move_to_previous_frame)
@@ -213,15 +258,18 @@ class IBS_BAP(QMainWindow):
         # self.delete_box_button.clicked.connect(self.delete_selected_box)
         self.playlist.itemClicked.connect(self.play_selected_file)
         self.bbox_list.itemClicked.connect(self.selected_bbox)
-        self.playback_slider.sliderPressed.connect(self.slider_pressed)
-        self.playback_slider.sliderReleased.connect(self.slider_released)
+        self.playback_slider.sliderPressed.connect(self.video_slider_pressed)
+        self.playback_slider.sliderReleased.connect(self.video_slider_released)
+        self.speed_slider.sliderPressed.connect(self.speed_slider_pressed)
+        self.speed_slider.sliderReleased.connect(self.speed_slider_released)
         self.class_selector.currentIndexChanged.connect(self.class_selected)
+        self.config_selector.currentIndexChanged.connect(self.config_selected)
         self.yolo_button.clicked.connect(self.run_yolo)
         self.stop_button.clicked.connect(self.stop_save_task)
     
     ### File management start #######################
     def open_files(self):
-        files, _ = QFileDialog.getOpenFileNames(self, "Open Files", "", "Files (*.mp4 *.jpg *.png)")
+        files, _ = QFileDialog.getOpenFileNames(self, "Open Files", os.getcwd(), "Files (*.mp4 *.jpg *.png)")
         if files:
             self.filelist.extend(files)
             self.playlist.addItems(files)
@@ -342,6 +390,16 @@ class IBS_BAP(QMainWindow):
             self.zoom_scale = self.original_scale
             
             self.update_frame()
+
+    def change_config(self):
+        file, _ = QFileDialog.getOpenFileNames(self, "Choose config file", f"{os.getcwd()}/config", "Files (*.json)")
+        if file:
+            self.config_path = file[0]
+            print(f"Current config file path: {self.config_path}")
+
+    def show_config(self):
+        json_viewer_window = JsonViewer(self.config_path)
+        json_viewer_window.show()
     ### File management end #######################
     
     ### Video controller start ####################
@@ -356,7 +414,7 @@ class IBS_BAP(QMainWindow):
         if self.cap:
             self.is_playing = True
             self.play_button.setText("⏸(Space)")
-            self.video_timer.start(20)
+            self.video_timer.start(int((1 / self.video_speed) * 1000))
 
     def pause_video(self):
         if self.cap:
@@ -365,35 +423,50 @@ class IBS_BAP(QMainWindow):
             self.video_timer.stop()
     
     # ======== video slider controller ========
-    def slider_pressed(self):
+    def video_slider_pressed(self):
         if self.cap:
             self.pause_video()
 
-    def slider_released(self):
+    def video_slider_released(self):
         if self.cap:
             self.current_frame_n = int(self.playback_slider.value())
             self.refresh_frame()
+
+    def speed_slider_pressed(self):
+        if self.cap:
+            self.pause_video()
+
+    def speed_slider_released(self):
+        if self.cap:
+            self.video_speed = int(self.speed_slider.value())
+            
     ### Video controller end ####################
     
     ### Load configuration start ################
     def load_config(self):
         try:
-            with open("./config/AVATAR3D_config.json", "r") as f:
+            # with open("./config/AVATAR3D_config.json", "r") as f:
+            with open(self.config_path, "r") as f:
                 config = json.load(f)
                 self.classes = config.get("class", [])
                 self.class_selector.clear()  # Initialize
                 self.class_selector.addItems(self.classes)
+                self.yolo11_model_path = config.get("yolo11_model_path")
 
                 # 클래스별 고유 색상 할당
                 self.class_colors = self.generate_class_colors(len(self.classes))
         except Exception as e:
             print(f"[Error] Failed to load classes: {e}")
+            
     ### Load configuration end ################
 
     ### Yolo class start ######################
     def class_selected(self, index):
         self.current_class_id = index
 
+    def config_selected(self, index):
+        self.config_path = self.config_list[index]
+        
     def generate_class_colors(self, num_classes):
         random.seed(42)  # 재현 가능한 색상 생성
         colors = []
@@ -407,30 +480,36 @@ class IBS_BAP(QMainWindow):
         self.bounding_boxes = results["bounding_boxes"]
         self.predicted_frame = results["predicted_frame"]
         self.raw_coordinates = results["raw_coordinates"]
-        self.recon3d_task = Recon3D(input_path = self.current_videopath, raw_coordinates = self.raw_coordinates)
+        self.recon3d_task = Recon3D(
+            input_path = self.current_videopath,
+            raw_coordinates = self.raw_coordinates,
+            config_path = self.config_path,
+            video_width = self.video_width,
+            video_height = self.video_height
+        )
         self.recon3d_task.start()
 
     def finish_yolo(self):
         self.statusBar().showMessage("Pose estimation completed!")
+        self.cap_yolo = None
         self.refresh_frame()
         
     def run_yolo(self):
-        if self.cap:            
-            if self.cap_yolo:
-                self.cap_yolo.release()
-            
-            self.cap_yolo = cv2.VideoCapture(self.current_videopath)
-            self.statusBar().showMessage("Running yolo11..")
-            self.yolo_task = YoloRunner(
-                self.cap_yolo,
-                self.predicted_frame,
-                self.bounding_boxes
-            )
-            self.yolo_task.progress.connect(lambda msg: self.statusBar().showMessage(msg))
-            self.yolo_task.result.connect(self.save_yolo_result)  # Result signal
-            self.yolo_task.finished.connect(self.finish_yolo)
-            self.yolo_task.stopped.connect(self.handle_task_stopped)
-            self.yolo_task.start()
+        if self.cap:
+            if not self.cap_yolo:
+                self.cap_yolo = cv2.VideoCapture(self.current_videopath)
+                self.statusBar().showMessage("Running yolo11..")
+                self.yolo_task = YoloRunner(
+                    cap = self.cap_yolo,
+                    predicted_frame = self.predicted_frame,
+                    bounding_boxes = self.bounding_boxes,
+                    config_path = self.config_path,
+                )
+                self.yolo_task.progress.connect(lambda msg: self.statusBar().showMessage(msg))
+                self.yolo_task.result.connect(self.save_yolo_result)  # Result signal
+                self.yolo_task.finished.connect(self.finish_yolo)
+                self.yolo_task.stopped.connect(self.handle_task_stopped)
+                self.yolo_task.start()
         else:
             QMessageBox.warning(self, "QMessageBox", "Please load video file")
     ### Yolo running end #################
@@ -475,9 +554,6 @@ class IBS_BAP(QMainWindow):
                 self.render_frame(self.current_frame)
                 if self.visualizer_window:
                     self.frame_signal.emit(self.current_frame_n)
-                    # self.frame_signal.connect(
-                    #     lambda: self.visualizer_window.on_slider_value_changed(self.current_frame_n)
-                    # )
             else:
                 self.pause_video()
     
@@ -607,23 +683,46 @@ class IBS_BAP(QMainWindow):
                     f"Class: {self.classes[class_id]} | ({x1}, {y1}) -> ({x2}, {y2})"
                 )
     
+    def finish_save(self):
+        self.statusBar().showMessage("Save completed!")
+        self.cap_save = None
+        
     def save_files(self, mode):
         if self.cap:
-            self.cap_save = cv2.VideoCapture(self.current_videopath)
-            self.statusBar().showMessage("Saving..")
-            self.save_task = YoloSaver(
-                self.cap_save,
-                self.predicted_frame,
-                self.bounding_boxes,
-                self.current_frame_n,
-                self.current_videopath,
-                mode
+            if not self.cap_save:
+                self.cap_save = cv2.VideoCapture(self.current_videopath)
+                self.statusBar().showMessage("Saving..")
+                self.save_task = YoloSaver(
+                    self.cap_save,
+                    self.predicted_frame,
+                    self.bounding_boxes,
+                    self.current_frame_n,
+                    self.current_videopath,
+                    mode
+                )
+                self.save_task.progress.connect(lambda msg: self.statusBar().showMessage(msg))
+                self.save_task.finished.connect(self.finish_save)
+                self.save_task.stopped.connect(self.handle_task_stopped)
+                self.save_task.start()
+    
+    def delete_all_bboxes(self):
+        if self.cap:
+            reply = QMessageBox.warning(
+                self, 
+                "Warning", 
+                "Do you want to delete all bounding boxes?", 
+                QMessageBox.Yes | QMessageBox.No, 
+                QMessageBox.No
             )
-            self.save_task.progress.connect(lambda msg: self.statusBar().showMessage(msg))
-            self.save_task.finished.connect(lambda: self.statusBar().showMessage("Save completed!"))
-            self.save_task.stopped.connect(self.handle_task_stopped)
-            self.save_task.start()
-
+            if reply == QMessageBox.No:
+                return
+            else:
+                self.bounding_boxes = {}
+                self.predicted_frame = [0]*(self.total_frames + 1)
+                self.refresh_frame()
+        else:
+            return
+    
     def save_json(self):
         if self.current_ext == ".mp4":
             save_path = f"{self.current_directory}/{self.current_filename}.json"
@@ -672,15 +771,19 @@ class IBS_BAP(QMainWindow):
 
     ### Task management start #####################
     def stop_save_task(self):
-        if hasattr(self, 'yolo_task') and self.yolo_task.isRunning():
+        if self.yolo_task:
             self.yolo_task.stop()
-            self.cap_yolo.release()
-        if hasattr(self, 'save_task') and self.save_task.isRunning():
+            self.yolo_task = None
+            self.cap_yolo = None
+        if self.save_task:
             self.save_task.stop()
-            self.cap_save.release()
+            self.save_task = None
+            self.cap_save = None
 
     def handle_task_stopped(self):
         self.statusBar().showMessage("Task is stopped!")
+        self.cap_yolo = None
+
     ### Task management end #####################
 
     ### Video conversion start #####################
@@ -697,7 +800,7 @@ class IBS_BAP(QMainWindow):
         else:
             self.visualizer_window = PoseVisualizer(
                 csv_file = coordinates_path,
-                config_file="./config/AVATAR3D_config.json"
+                config_file = self.config_path
             )
             # self.visualizer_window.conversion_complete_signal.connect(self.on_conversion_complete)
             self.frame_signal.connect(lambda: self.visualizer_window.on_slider_value_changed(self.current_frame_n))
@@ -712,11 +815,17 @@ class IBS_BAP(QMainWindow):
 if __name__ == "__main__":
     multiprocessing.freeze_support()
 
+    ### Get current resolution of screen
+    tk_for_res = tkinter.Tk()
+    width = tk_for_res.winfo_screenwidth()
+    height = tk_for_res.winfo_screenheight()
+    tk_for_res.destroy()
+    
     app = QApplication.instance()
     if app is None:
         app = QApplication(sys.argv)
 
-    player = IBS_BAP()
+    player = IBS_BAP(width, height)
     player.show()
     player.raise_()
     player.activateWindow()
