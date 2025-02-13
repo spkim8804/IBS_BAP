@@ -9,42 +9,55 @@ from PyQt5.QtCore import QTimer, Qt, QPoint, QThread, pyqtSignal
 class Recon3D(QThread):
     finished = pyqtSignal()
     
-    def __init__(self, input_path, raw_coordinates):
+    def __init__(self, input_path, raw_coordinates, config_path, video_width = 0, video_height = 0):
         super().__init__()
         self.input_path = input_path
         self.raw_coordinates = raw_coordinates
+        self.config_path = config_path
+        self.area = []
+        self.video_width = video_width
+        self.video_height = video_height
         
         directory, filename = os.path.split(self.input_path)
         filename, ext = os.path.splitext(filename)
         self.output_path = f"{directory}/{filename}_coordinates.csv"
 
         # Load configuration file
-        config_file = './config/AVATAR3D_config.json'
-        with open(config_file, 'r') as file:
-            self.cfg = json.load(file)
-        
-        self.camera_matrices = [np.array(mtx) for mtx in self.cfg["camera"]["calibration"]["camera_matrices"]]
-        self.dist_coeffs = [np.array(dist) for dist in self.cfg["camera"]["calibration"]["dist_coeffs"]]
-        self.rot_vectors = [np.array(rvec) for rvec in self.cfg["camera"]["calibration"]["rot_vectors"]]
-        self.trans_vectors = [np.array(tvec) for tvec in self.cfg["camera"]["calibration"]["trans_vectors"]]
-        self.square_size = self.cfg["camera"]["calibration"]["square_size_overide_mm"]
-        
-        # 각 카메라의 투영 행렬 계산
-        self.projection_matrices = []
-        for cam_idx, (K, rvec, tvec) in enumerate(zip(self.camera_matrices, self.rot_vectors, self.trans_vectors)):
-            R, _ = cv2.Rodrigues(rvec)  # 회전 벡터를 회전 행렬로 변환
-            T = tvec.reshape(3, 1)          # 변환 벡터
-            RT = np.hstack((R, T))          # [R | T]
-            P = np.dot(K, RT)               # 투영 행렬: K * [R | T]
-            self.projection_matrices.append(P)
-        
-        # 평행이동과 회전을 위한 value: pre-determined
-        self.INTERSECTION = [ 5.485472, 11.23394,  -6.582967]
-        self.ROTATION_MATRIX = [[ 0.9940044, -0.09772341, -0.04904471],
-         [-0.09772341, -0.59281272, -0.79938928],
-         [0.04904471, 0.79938928, -0.59880832]]
-        self.INTERSECTION = np.array(self.INTERSECTION)
-        self.ROTATION_MATRIX = np.array(self.ROTATION_MATRIX)
+        with open(self.config_path, "r") as f:
+            try:
+                self.cfg = json.load(f)
+                
+                if self.cfg["camera"]["cnt"] > 1:
+                    self.area = self.cfg["camera"]["roi"]
+                else: 
+                    self.area = [[0, 0, self.video_width, self.video_height]]
+                    
+                # Get camera calibration data for 3D reconstruction
+                if self.cfg['camera']['dimension'] == 3:
+                    self.camera_matrices = [np.array(mtx) for mtx in self.cfg["camera"]["calibration"]["camera_matrices"]]
+                    self.dist_coeffs = [np.array(dist) for dist in self.cfg["camera"]["calibration"]["dist_coeffs"]]
+                    self.rot_vectors = [np.array(rvec) for rvec in self.cfg["camera"]["calibration"]["rot_vectors"]]
+                    self.trans_vectors = [np.array(tvec) for tvec in self.cfg["camera"]["calibration"]["trans_vectors"]]
+                    self.square_size = self.cfg["camera"]["calibration"]["square_size_overide_mm"]
+                    
+                    # 각 카메라의 투영 행렬 계산
+                    self.projection_matrices = []
+                    for cam_idx, (K, rvec, tvec) in enumerate(zip(self.camera_matrices, self.rot_vectors, self.trans_vectors)):
+                        R, _ = cv2.Rodrigues(rvec)  # 회전 벡터를 회전 행렬로 변환
+                        T = tvec.reshape(3, 1)          # 변환 벡터
+                        RT = np.hstack((R, T))          # [R | T]
+                        P = np.dot(K, RT)               # 투영 행렬: K * [R | T]
+                        self.projection_matrices.append(P)
+                    
+                    # 평행이동과 회전을 위한 value: pre-determined
+                    self.INTERSECTION = [ 5.485472, 11.23394,  -6.582967]
+                    self.ROTATION_MATRIX = [[ 0.9940044, -0.09772341, -0.04904471],
+                     [-0.09772341, -0.59281272, -0.79938928],
+                     [0.04904471, 0.79938928, -0.59880832]]
+                    self.INTERSECTION = np.array(self.INTERSECTION)
+                    self.ROTATION_MATRIX = np.array(self.ROTATION_MATRIX)
+            except:
+                QMessageBox.warning(self, "Config file error", "Please check config file!")        
 
     def transform_point(self, point):
         translated_point = point - self.INTERSECTION
@@ -95,26 +108,30 @@ class Recon3D(QThread):
         # Load points from file and process
         # points_data = np.loadtxt(input_file, delimiter="\t")  # Load the data from file
         points_data = self.raw_coordinates
-        
+        results = []
+    
         # Extract 2D points and confidences
-        triangulated_points = []
         for row in points_data:
-            triangulated_row = []  # Store triangulated points for one row
+        
+            extraced_row = []  # Store extraced points for one row
             for i in range(self.cfg['keypoint']['cnt']):
                 points_2d = []
                 conf = []
                 for j in range(self.cfg['camera']['cnt']):
                     x, y, confidence = row[j*self.cfg['keypoint']['cnt']*3 + i*3 : j*self.cfg['keypoint']['cnt']*3 + i*3 + 3]
-                    points_2d.append(x - self.cfg['camera']['roi'][j][0])
-                    points_2d.append(y - self.cfg['camera']['roi'][j][1])
+                    points_2d.append(x - self.area[j][0])
+                    points_2d.append(y - self.area[j][1])
                     conf.append(confidence)
+
+                if self.cfg['camera']['dimension'] == 3:
+                    point_3d = self.triangulate_points(points_2d, conf, self.cfg['camera']['cnt'])
+                    transformed_point = self.transform_point(point_3d) # 카메라 3을 z축 기준으로 전환
+                else:
+                    transformed_point = points_2d + [0] # z as 0
                 
-                point_3d = self.triangulate_points(points_2d, conf, self.cfg['camera']['cnt'])
-                transformed_point = self.transform_point(point_3d) # 카메라 3을 z축 기준으로 전환
-                
-                triangulated_row.extend(transformed_point)
+                extraced_row.extend(transformed_point)
             
-            triangulated_points.append(triangulated_row)
+            results.append(extraced_row)
         
         # Save results to file
-        np.savetxt(self.output_path, triangulated_points, fmt="%.6f", comments="", delimiter=",")
+        np.savetxt(self.output_path, results, fmt="%.6f", comments="", delimiter=",")
