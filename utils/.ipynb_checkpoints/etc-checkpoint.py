@@ -4,7 +4,9 @@ import json
 import os
 import glob
 
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QTextEdit, QPushButton
+from PyQt5.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QTextEdit, QPushButton, QFileDialog, QMessageBox
+)
 
 def zero_replacing(points_data):
     """
@@ -79,43 +81,111 @@ def calc_min_distance(click_x, click_y, x1, y1, x2, y2):
     return min_distance
 
 class JsonViewer(QWidget):
-    def __init__(self, json_file_path):
+    def __init__(self, json_file=None):
         super().__init__()
+        self.current_file = json_file  # default JSON file
+        self.init_ui()
 
-        self.setWindowTitle("JSON viewer")
+        if self.current_file:
+            self.load_json_file(initial_load=True)
+
+    def init_ui(self):
+        self.setWindowTitle(f"{self.current_file}")
         self.setGeometry(100, 100, 600, 400)
 
         layout = QVBoxLayout()
 
-        # Start and Stop Buttons
-        button_layout = QVBoxLayout()
-        self.start_button = QPushButton("Start Conversion")
-        button_layout.addWidget(self.start_button)
+        self.open_button = QPushButton("Open JSON file", self)
+        self.open_button.clicked.connect(self.load_json_file)
 
-        layout.addLayout(button_layout)
-        
-        # self.text_area = QTextEdit()
-        # self.text_area.setReadOnly(True)
-        # layout.addWidget(self.text_area)
+        self.save_button = QPushButton("Save JSON file", self)
+        self.save_button.clicked.connect(self.save_json_file)
 
-        # self.setLayout(layout)
-        
-        # self.load_json(json_file_path)
+        self.text_edit = QTextEdit(self)
 
-    def load_json(self, file_path):
-        if not os.path.exists(file_path):
-            self.text_area.setText(f"No file was found: {file_path}")
+        layout.addWidget(self.open_button)
+        layout.addWidget(self.save_button)
+        layout.addWidget(self.text_edit)
+
+        self.setLayout(layout)
+
+    def load_json_file(self, initial_load=False):
+        if not initial_load:  # try to open other json file
+            options = QFileDialog.Options()
+            file_path, _ = QFileDialog.getOpenFileName(
+                self, "Choose JSON file", "", "JSON Files (*.json);;All Files (*)", options=options
+            )
+            if not file_path:
+                return
+            self.current_file = file_path  # 새 파일 경로 저장
+            self.setWindowTitle(f"{self.current_file}")
+
+        if self.current_file:  # JSON 파일 경로가 존재할 때
+            try:
+                with open(self.current_file, "r", encoding="utf-8") as file:
+                    json_data = json.load(file)
+
+                pretty_json = json.dumps(json_data, indent=4, ensure_ascii=False)
+                self.text_edit.setText(pretty_json)
+
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Error occurs during JSON file load:\n{str(e)}")
+
+    def save_json_file(self):
+        if not self.current_file:
+            QMessageBox.warning(self, "Warning", "Please open JSON file.")
             return
 
-        # try:
-        #     with open(file_path, 'r', encoding='utf-8') as file:
-        #         json_data = json.load(file)
+        try:
+            json_text = self.text_edit.toPlainText()
+            json_data = json.loads(json_text)  # JSON 유효성 검사
 
-        #     formatted_json = json.dumps(json_data, indent=4, ensure_ascii=False)
-        #     self.text_area.setText(formatted_json)
+            with open(self.current_file, "w", encoding="utf-8") as file:
+                json.dump(json_data, file, indent=4, ensure_ascii=False)
 
-        # except Exception as e:
-        #     self.text_area.setText(f"Cannot open the file: {str(e)}")
+            QMessageBox.information(self, "Save complete", "JSON file is successfully saved.")
+
+        except json.JSONDecodeError:
+            QMessageBox.critical(self, "Save failure", "Invalid JSON file. Please check the file.")
+
+# class JsonViewer(QWidget):
+#     def __init__(self, json_file_path):
+#         super().__init__()
+
+#         self.setWindowTitle("JSON viewer")
+#         self.setGeometry(100, 100, 600, 400)
+
+#         layout = QVBoxLayout()
+
+#         # Start and Stop Buttons
+#         button_layout = QVBoxLayout()
+#         self.start_button = QPushButton("Start Conversion")
+#         button_layout.addWidget(self.start_button)
+
+#         layout.addLayout(button_layout)
+        
+#         # self.text_area = QTextEdit()
+#         # self.text_area.setReadOnly(True)
+#         # layout.addWidget(self.text_area)
+
+#         # self.setLayout(layout)
+        
+#         # self.load_json(json_file_path)
+
+#     def load_json(self, file_path):
+#         if not os.path.exists(file_path):
+#             self.text_area.setText(f"No file was found: {file_path}")
+#             return
+
+#         try:
+#             with open(file_path, 'r', encoding='utf-8') as file:
+#                 json_data = json.load(file)
+
+#             formatted_json = json.dumps(json_data, indent=4, ensure_ascii=False)
+#             self.text_area.setText(formatted_json)
+
+#         except Exception as e:
+#             self.text_area.setText(f"Cannot open the file: {str(e)}")
 
 def find_json_files(directory):
     json_file_names = []
