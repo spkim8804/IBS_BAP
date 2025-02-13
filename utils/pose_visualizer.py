@@ -2,7 +2,6 @@ import sys
 import numpy as np
 import pandas as pd
 import json
-import platform as pf
 
 from PyQt5.QtWidgets import QApplication, QMainWindow, QOpenGLWidget, QVBoxLayout, QSlider, QWidget, QPushButton, QHBoxLayout
 from PyQt5.QtCore import Qt, QTimer
@@ -51,8 +50,6 @@ class Point3DWidget(QOpenGLWidget):
         print(f"Data range: {self.x_min} < x < {self.x_max}, {self.y_min} < y < {self.y_max}, {self.z_min} < x < {self.z_max}")
         self.max_range = max(self.x_max - self.x_min, self.y_max - self.y_min, self.z_max - self.z_min)
         self.zoom = 2 * self.max_range  # 카메라 거리 조정
-        if pf.system() == "Windows":
-            self.zoom = -self.zoom
         
     def initializeGL(self):
         glEnable(GL_DEPTH_TEST)  # 깊이 테스트 활성화
@@ -76,7 +73,7 @@ class Point3DWidget(QOpenGLWidget):
         glLoadIdentity()
 
         # 카메라 위치 조정 (상자 외부에서 바라보기)
-        glTranslatef(self.move_x, self.move_y, self.zoom) # 카메라 위치 조정
+        glTranslatef(self.move_x, self.move_y, -self.zoom) # 카메라 위치 조정
         glRotatef(self.rotate_x, 1.0, 0.0, 0.0)  # X축 회전
         glRotatef(self.rotate_y, 0.0, 1.0, 0.0)  # Y축 회전
 
