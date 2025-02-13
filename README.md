@@ -5,6 +5,7 @@
 
 ## Updates
 * 2025/02/04: Confirmed that IBS-BAP is working well on macOS.
+* 2025/02/13: Pose visualizer is now available in "Visualizer" menu (Windows and macOS).
 
 ## Features
 Visualize image file (jpg, png) and video file (mp4) and make bounding boxes. In case of mp4 file, if it is not **i-frame video**, the program will offer you to convert your video (Generate new mp4 file with "_iframe" in the same directory)
