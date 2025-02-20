@@ -26,22 +26,26 @@ Save all the images and bounding boxes (format: class_id, center_x, center_y, wi
 **Windows** with **Anaconda environment** is recommanded.
 Make and activate a virtual environment with python 3.10.
 ```bash
-conda create -n IBS_BAP python=3.10
+conda create -n IBS_BAP python=3.10 -y
 conda activate IBS_BAP
+
 ```
 Then, copy this repository to your computer.
 ```bash
 git clone https://github.com/spkim8804/IBS_BAP.git
 cd IBS_BAP
+
 ```
 Install libraries.
 ```bash
 pip install -r requirements.txt
+
 ```
 
 Run IBS-BAP.
 ```bash
 python IBS_BAP.py
+
 ```
 
 ## GUI composition
