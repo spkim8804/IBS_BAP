@@ -31,15 +31,15 @@ class Point3DWidget(QOpenGLWidget):
         self.num_frames = len(self.data)  # 총 프레임 수
         self.num_points = self.cfg["keypoint"]["cnt"]  # 점의 개수
         self.colors = [
-            [0, 0, 255],
-            [0, 165, 255],
-            [0, 255, 255],
-            [0, 128, 0],
-            [255, 0, 0],
-            [235, 206, 135],
-            [128, 0, 128],
-            [0, 0, 0],
-            [255, 192, 203]
+            [255/255, 0/255, 0/255], # red: nose
+            [255/255, 192/255, 203/255], # pink: head
+            [255/255, 165/255, 0/255], # Orange : ass
+            [235/255, 206/255, 135/255], # Burlywood : chest
+            [128/255, 0/255, 128/255], # Purple : rfoot
+            [0/255, 255/255, 255/255], # Cyan : lfoot
+            [0/255, 0/255, 255/255], # Blue : rhand
+            [0/255, 128/255, 0/255], # Green: lhand
+            [0/255, 0/255, 0/255], # Black: tip
         ]
 
         # 데이터의 x, y, z 범위 계산
@@ -47,7 +47,7 @@ class Point3DWidget(QOpenGLWidget):
         self.x_min, self.x_max = self.data[:, :, 0].min(), self.data[:, :, 0].max()
         self.y_min, self.y_max = self.data[:, :, 1].min(), self.data[:, :, 1].max()
         self.z_min, self.z_max = self.data[:, :, 2].min(), self.data[:, :, 2].max()
-        print(f"Data range: {self.x_min} < x < {self.x_max}, {self.y_min} < y < {self.y_max}, {self.z_min} < x < {self.z_max}")
+        print(f"Data range: {self.x_min} <= x <= {self.x_max}, {self.y_min} <= y <= {self.y_max}, {self.z_min} <= z <= {self.z_max}")
         self.max_range = max(self.x_max - self.x_min, self.y_max - self.y_min, self.z_max - self.z_min)
         self.zoom = 2 * self.max_range  # 카메라 거리 조정
         
@@ -238,21 +238,3 @@ class PoseVisualizer(QMainWindow):
         current_time = self.slider.value()
         new_time = (current_time + 1) % 1000
         self.slider.setValue(new_time)
-
-# if __name__ == "__main__":
-#     # CSV 파일 경로 지정
-#     csv_file_path = "adult_6116.csv"
-
-#     app = QApplication.instance()
-#     if app is None:
-#         app = QApplication(sys.argv)
-#     window = MainWindow(csv_file=csv_file_path)
-#     window.show()
-#     try:
-#         app.exec_()
-#     except SystemExit:
-#         print("[Info] PyQt5 Application exited cleanly.")
-#     finally:
-#         app.quit()
-#         del app
-#         print("[Info] QApplication resources have been cleaned up.")

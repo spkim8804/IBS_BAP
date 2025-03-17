@@ -148,44 +148,47 @@ class JsonViewer(QWidget):
         except json.JSONDecodeError:
             QMessageBox.critical(self, "Save failure", "Invalid JSON file. Please check the file.")
 
-# class JsonViewer(QWidget):
-#     def __init__(self, json_file_path):
-#         super().__init__()
+def find_images_and_texts_yolo_format(image_root, label_root):
+    train_list = []  # (JPG 파일 경로, 대응하는 TXT 파일 경로) 저장 리스트
 
-#         self.setWindowTitle("JSON viewer")
-#         self.setGeometry(100, 100, 600, 400)
+    # images 폴더 내 train, val 등 하위 폴더 탐색
+    for subdir in ["train", "val"]:  # train, val 폴더만 탐색
+        image_folder = os.path.join(image_root, subdir)  # 이미지 폴더 경로
+        label_folder = os.path.join(label_root, subdir)  # 라벨 폴더 경로
 
-#         layout = QVBoxLayout()
+        if not os.path.exists(image_folder) or not os.path.exists(label_folder):
+            print(f"폴더 없음: {image_folder} 또는 {label_folder}")
+            continue  # 폴더가 없으면 건너뜀
 
-#         # Start and Stop Buttons
-#         button_layout = QVBoxLayout()
-#         self.start_button = QPushButton("Start Conversion")
-#         button_layout.addWidget(self.start_button)
+        # 이미지 폴더에서 jpg 파일 찾기
+        for file in os.listdir(image_folder):
+            if file.lower().endswith(".jpg"):  # 확장자가 jpg인지 확인
+                jpg_path = os.path.join(image_folder, file)
+                txt_path = os.path.join(label_folder, file.replace(".jpg", ".txt"))  # txt 파일 경로 예상
 
-#         layout.addLayout(button_layout)
-        
-#         # self.text_area = QTextEdit()
-#         # self.text_area.setReadOnly(True)
-#         # layout.addWidget(self.text_area)
+                # 해당 txt 파일이 존재하는지 확인
+                if os.path.exists(txt_path):
+                    train_list.append((jpg_path, txt_path))
+                else:
+                    train_list.append((jpg_path, None))  # txt 파일이 없으면 None 저장
 
-#         # self.setLayout(layout)
-        
-#         # self.load_json(json_file_path)
+    return train_list
 
-#     def load_json(self, file_path):
-#         if not os.path.exists(file_path):
-#             self.text_area.setText(f"No file was found: {file_path}")
-#             return
+def find_images_and_texts_same_folder(folderPath):
+    train_list = []
 
-#         try:
-#             with open(file_path, 'r', encoding='utf-8') as file:
-#                 json_data = json.load(file)
+    for file in os.listdir(folderPath):
+        if file.lower().endswith(".jpg"):  # 확장자가 jpg인지 확인
+            jpg_path = os.path.join(folderPath, file)
+            txt_path = os.path.join(folderPath, file.replace(".jpg", ".txt"))  # txt 파일 경로 예상
 
-#             formatted_json = json.dumps(json_data, indent=4, ensure_ascii=False)
-#             self.text_area.setText(formatted_json)
+            # 해당 txt 파일이 존재하는지 확인
+            if os.path.exists(txt_path):
+                train_list.append((jpg_path, txt_path))
+            else:
+                train_list.append((jpg_path, None))  # txt 파일이 없으면 None 저장
 
-#         except Exception as e:
-#             self.text_area.setText(f"Cannot open the file: {str(e)}")
+    return train_list
 
 def find_json_files(directory):
     json_file_names = []

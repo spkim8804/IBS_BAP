@@ -4,6 +4,8 @@ import subprocess
 import re
 import json
 import platform
+import shutil
+
 from PyQt5.QtCore import QTimer, Qt, QPoint, QThread, pyqtSignal
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QLabel, QPushButton, QVBoxLayout,
@@ -171,19 +173,23 @@ class ConvertVideoToIframe(QThread):
         
     def run(self):
         directory, filename = os.path.split(self.video_path)
-        filename, ext = os.path.splitext(filename)
-        output_path = f"{directory}/{filename}_iframe{ext}"
+        # filename, ext = os.path.splitext(filename)
+        original_directory = os.path.join(directory, "original")
+        self.original_filepath = os.path.join(original_directory, filename)
+        if not os.path.exists(original_directory):
+            os.makedirs(original_directory)
         
-        bitrate = self.get_bitrate(self.video_path)
-        framerate = str(self.get_avg_frame_rate(self.video_path))
+        shutil.move(self.video_path, self.original_filepath)
+        output_path = self.video_path
         
         try:                
-            total_duration = self.get_total_duration(self.video_path)
-            bitrate = self.get_bitrate(self.video_path)
+            total_duration = self.get_total_duration(self.original_filepath)
+            bitrate = self.get_bitrate(self.original_filepath)
+            framerate = str(self.get_avg_frame_rate(self.original_filepath))
         
             cmd = [
                 self.ffmpeg_path,
-                "-i", self.video_path,
+                "-i", self.original_filepath,
                 "-r", framerate,
                 "-g", "1",
                 "-c:v", "libx264",

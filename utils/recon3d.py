@@ -5,18 +5,22 @@ import os
 
 from matplotlib import pyplot as plt
 from PyQt5.QtCore import QTimer, Qt, QPoint, QThread, pyqtSignal
+from PyQt5.QtWidgets import QMessageBox
 
 class Recon3D(QThread):
     finished = pyqtSignal()
     
-    def __init__(self, input_path, raw_coordinates, config_path, video_width = 0, video_height = 0):
+    def __init__(self, input_path, raw_coordinates, config_path):
         super().__init__()
         self.input_path = input_path
         self.raw_coordinates = raw_coordinates
         self.config_path = config_path
         self.area = []
-        self.video_width = video_width
-        self.video_height = video_height
+
+        self.cap = cv2.VideoCapture(input_path)
+        # self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        self.video_width = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        self.video_height = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         
         directory, filename = os.path.split(self.input_path)
         filename, ext = os.path.splitext(filename)
